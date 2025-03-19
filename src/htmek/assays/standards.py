@@ -8,8 +8,11 @@ import magnify
 def standards_pipe(
     data,
     pinlist,
+    overlap=96,
+    rotation=3,
     blank='BLANK',
-    hflip=True,
+    post_hflip=True,
+    pre_hflip=False,
     pipes=None,
     return_pipe=False,
     **kwargs,
@@ -23,9 +26,9 @@ def standards_pipe(
     pipe = magnify.microfluidic_chip_pipe(
         chip_type='ps',
         shape=(56,32),
-        overlap=96,
-        rotation=3,
         pinlist=pinlist,
+        overlap=overlap,
+        rotation=rotation,
         blank=blank,
         high_edge_quantile=0.990,
         min_button_diameter=65,
@@ -40,8 +43,10 @@ def standards_pipe(
         for new_pipe in pipes:
             pipe.add_pipe(new_pipe)
 
-    if hflip:
+    if post_hflip:
         pipe.add_pipe("horizontal_flip", after="stitch")
+    if pre_hflip:
+        pipe.add_pipe("horizontal_flip", before="stitch")
 
     if return_pipe:
         return pipe
