@@ -9,6 +9,8 @@ def kinetics_pipe(
     pinlist,
     blank='BLANK',
     hflip=True,
+    pipes=None,
+    return_pipe=False,
     **kwargs,
 ):
     """Pipeline for obtaining a chip object specific for Kinetics.
@@ -34,7 +36,14 @@ def kinetics_pipe(
         **kwargs,
     )
 
+    if pipes is not None:   
+        for new_pipe in pipes:
+            pipe.add_pipe(new_pipe)
+
     if hflip:
         pipe.add_pipe("horizontal_flip", after="stitch")
+        
+    if return_pipe:
+        return pipe
 
     return pipe(data)
