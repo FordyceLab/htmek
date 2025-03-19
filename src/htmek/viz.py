@@ -152,7 +152,7 @@ def view(
 
 
 def chip_hm(
-    chip: xr.Dataset,
+    data: xr.Dataset | pd.DataFrame,
     value: str = 'roi',
     agg_func: str = 'median',
     mask: None | xr.Dataset = None,
@@ -165,8 +165,9 @@ def chip_hm(
     
     Parameters
     ----------
-    chip :
-        The chip object from a magnify.microfluidic_chip_pipe.
+    data :
+        Data container. Could be the chip object from 
+        magnify.microfluidic_chip_pipe or a DataFrame.
     value :
         What value to plot. Defaults to roi.
     agg_func :
@@ -185,7 +186,10 @@ def chip_hm(
         Arbitrary size of the rendered heatmap. Default 1.
     """
 
-    df = to_df(chip, value, agg_func, mask)
+    if isinstance(data, xr.Dataset):
+        df = to_df(data, value, agg_func, mask)
+    else:
+        df = data
 
     p = hv.HeatMap(
         df,
