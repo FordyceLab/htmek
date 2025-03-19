@@ -199,6 +199,45 @@ def chip_hm(
     return p
 
 
+def chamber_map(
+    chip: xr.Dataset,
+    imscale: float = None,
+    limits: None | tuple[int, int] = None,
+) -> hv.DynamicMap:
+    """Plot an image of the full chip or a chamber from the chip object.
+    
+    Parameters
+    ----------
+    chip :
+        The chip object from a magnify.microfluidic_chip_pipe.
+    imscale :
+        Scale of the image. Defaults to 2.
+    limits :
+        A tuple of ints for intensity limits. Defaults to (min, max) of
+        a given chamber. Hot spots can make chambers look less bright
+        than others if left as None.
+
+    Returns
+    -------
+    dmap :
+        hv.DynamicMap object of all chambers (accessed by sliders).
+
+    Examples
+    --------
+    >>> htmek.viz.chamber_map(chip)
+    """
+    def chamber(col, row):
+        return view(chip, chamber=(col, row), imscale=imscale, limits=limits)
+
+    col = hv.Dimension('col', values=range(32))
+    row = hv.Dimension('row', values=range(56))
+
+    dmap = hv.DynamicMap(chamber, kdims=[col, row])
+    dmap.opts(framewise=True)
+
+    return dmap
+
+
 ######################
 # Standards plotting
 ######################
