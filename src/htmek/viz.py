@@ -140,7 +140,9 @@ def view(
         frame_height=int(len(data)*imscale),
         clim=limits,
         invert_xaxis=True,
-        invert_yaxis=True
+        invert_yaxis=True,
+        colorbar=True,
+        colorbar_opts=dict(title='intensity'),
     )
 
     if rastered:
@@ -194,6 +196,8 @@ def chip_hm(
         invert_xaxis=True,
         frame_width=int(300*scale),
         frame_height=int(150*3.25*scale),
+        colorbar=True,
+        colorbar_opts=dict(title=value),
     )
 
     return p
@@ -233,7 +237,11 @@ def chamber_map(
     row = hv.Dimension('row', values=range(56))
 
     dmap = hv.DynamicMap(chamber, kdims=[col, row])
-    dmap.opts(framewise=True)
+    dmap.opts(
+        framewise=True,
+        colorbar=True,
+        colorbar_opts=dict(title='intensity'),
+    )
 
     return dmap
 
