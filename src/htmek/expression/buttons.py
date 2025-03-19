@@ -1,0 +1,39 @@
+import numpy as np
+import pandas as pd
+
+import magnify
+
+
+def buttons_pipe(
+    data,
+    pinlist,
+    blank='BLANK',
+    hflip=True,
+    **kwargs,
+):
+    """Pipeline for obtaining a chip object specific for Buttons.
+    
+    See magnify.microfluidic_chip_pipe for docs:
+    
+    https://github.com/FordyceLab/magnify/blob/main/src/magnify/registry.py#L35
+    """
+    pipe = magnify.microfluidic_chip_pipe(
+        chip_type='ps',
+        shape=(56,32),
+        overlap=96,
+        rotation=3,
+        pinlist=pinlist,
+        blank=blank,
+        high_edge_quantile=0.999,
+        min_button_diameter=18,
+        max_button_diameter=22,
+        chamber_diameter=75,
+        min_roundness=0.20,
+        roi_length=None,
+        **kwargs,
+    )
+
+    if hflip:
+        pipe.add_pipe("horizontal_flip", after="stitch")
+
+    return pipe(data)
