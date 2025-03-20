@@ -8,6 +8,7 @@ def to_df(
     value: str = 'roi',
     agg_func: str = 'median',
     mask: None | xr.Dataset = None,
+    make_coord: None | str | list[str] = None,
 ) -> pd.DataFrame:
     """Collapses a chip dataset into a pd.DataFrame.
 
@@ -24,6 +25,10 @@ def to_df(
         the foreground mask determined by magnify (chip.fg), but can be 
         overwritten with a different mask, including from a different
         chip entirely.
+    make_coord :
+        Any data variables in the chip to convert to a coordinate, which
+        will then get carried through to the output dataframe. Can be a
+        string or list of strings.
 
     Returns
     -------
@@ -41,12 +46,20 @@ def to_df(
     This will return the sum of the roi values within a fg mask provided
     by chip2.
     """
+    chip = chip.copy()
+    
     if mask is None:
         mask = chip.fg
     else:
         if isinstance(mask, xr.Dataset):
             # Reduces over-indexing and dropping columns
             mask = mask.to_numpy()
+
+    if make_coord is not None:
+        if isinstance(make_coord, str):
+            make_coord = [make_coord]
+        for coord in make_coord:
+            chip.coords[coord] = chip[coord]
 
     # Aggregate to DataFrame
     collapse = [f'{value}_x', f'{value}_y']

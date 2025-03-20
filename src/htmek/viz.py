@@ -50,6 +50,12 @@ hv_defaults = (
         tools=['hover'],
         active_tools=[],
     ),
+    hv.opts.BoxWhisker(
+        frame_width=350,
+        frame_height=350,
+        tools=['hover'],
+        active_tools=[],
+    ),
 )
 
 hv.opts.defaults(*hv_defaults)
