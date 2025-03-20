@@ -7,7 +7,7 @@ hv.extension('bokeh')
 import magnify
 import xarray as xr
 
-from .assays.standards import PBP_isotherm
+from .assays.standards import PBP_isotherm, fit_PBP
 from .process import to_df
 
 ######################
@@ -277,3 +277,52 @@ def plot_PBP(
     )
 
     return p_fit*p_data
+
+
+def PBP_map(
+    df: pd.DataFrame,
+    row: str = 'mark_row',
+    col: str = 'mark_col',
+    x: str = '[Pi] (µM)',
+    y: str = 'roi',
+):
+    """Creates a hv.DynamicMap to display PBP fits across all chambers.
+
+    Parameters
+    ----------
+    df :
+        A tidy pandas DataFrame containing PBP fluorescence data (y) across
+        multiple concentrations (x) for all chambers (mark_row, mark_col).
+    row :
+        Name of df column containing row information ('mark_row' from
+        magnify.
+    col :
+        Name of df column containing column information ('mark_col' from
+        magnify.
+    x :
+        Name of the x axis (standard concentration). Defaults to '[Pi] (µM)'.
+    y :
+        Name of the y axis (fluorescence signal). Defaults to 'roi', but
+        is plotted as RFU by viz.plot_PBP.
+    
+    Returns
+    -------
+    dmap :
+        hv.DynamicMap of PBP fits for all chambers.
+    
+    """
+    def fit(mark_col, mark_row):
+        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
+
+        P_is, RFUs = sub_df[x].values, sub_df[y].values
+        popt, pcov = fit_PBP(P_is, RFUs)
+        ylim = (0, df[y].max())
+
+        return plot_PBP(P_is, RFUs, popt).opts(ylim=ylim)
+
+    mark_col = hv.Dimension('column', values=range(32))
+    mark_row = hv.Dimension('row', values=range(56))
+
+    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
+
+    return dmap
