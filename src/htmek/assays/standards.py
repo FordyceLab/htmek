@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.optimize import curve_fit
 
 import magnify
+import sympy as sp
 
 
 def standards_pipe(
@@ -69,7 +70,48 @@ def PBP_isotherm(
     radicand = (KD + PS + P_i)**2 - 4*PS*P_i
     product = KD + P_i + PS - np.sqrt(radicand)
     return 0.5*RFU*product + I_0uMP_i
+    
+    return P_is_func
 
+def invert_PBP_isotherm():
+    """Invert the PBP isotherm with sympy."""
+    # Define symbols
+    P_i, RFU, KD, PS, I_0uMP_i, product = sp.symbols('P_i RFU KD PS I_0uMP_i product')
+
+    # Define isotherm
+    radicand = (KD + PS + P_i)**2 - 4*PS*P_i
+    product = KD + P_i + PS - sp.sqrt(radicand)
+    isotherm = 0.5*RFU*product + I_0uMP_i
+
+    # Solve for P_i
+    P_i_solutions = sp.solve(isotherm, P_i)
+
+    # Print the solutions
+    print("Solutions for P_i:", P_i_solutions)
+
+    # Select the correct solution (the one that is real and positive)
+    # This might require some manual inspection of the solutions
+    # Assuming the first solution is the correct one
+    inverted_PBP_isotherm = P_i_solutions[0]
+
+    return inverted_PBP_isotherm
+
+def compute_PBP_product(
+    RFU,
+    popt,
+    inverted_PBP_isotherm
+):
+    """Compute P_i values from RFUs from inverted PBP function."""
+    KD, PS, I_0uMP_i = popt[1:]
+    
+    P_i = inverted_PBP_isotherm.evalf(subs={
+        'RFU': RFU,
+        'KD': KD,
+        'PS': PS,
+        'I_0uMP_i': I_0uMP_i,
+    })
+    
+    return P_i
 
 def fit_PBP(
     P_is,
