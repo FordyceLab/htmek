@@ -3,6 +3,8 @@ from skimage.transform import rescale
 import tifffile as tf
 from pathlib import Path
 
+import magnify
+
 
 def bin2x2(array: np.array) -> np.array:
     """Takes an unbinned image and performs a correction to match the
@@ -39,6 +41,8 @@ def make_binned_tiff(
     )
 
     array = bin2x2(data.image.to_numpy())
+
+    array = array.astype('int16')
 
     tf.imwrite(output, array)
 
