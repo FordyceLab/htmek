@@ -22,7 +22,7 @@ def lagoons_pipe(
     
     https://github.com/FordyceLab/magnify/blob/main/src/magnify/registry.py#L35
     """
-    pipe = magnify.microfluidic_chip_pipe(
+    default_kwargs = dict(
         chip_type='ps',
         shape=(56,32),
         pinlist=pinlist,
@@ -35,7 +35,13 @@ def lagoons_pipe(
         chamber_diameter=75,
         min_roundness=0.20,
         roi_length=None,
-        **kwargs,
+    )
+
+    # Update default kwargs with any provided kwargs, overwriting defaults
+    default_kwargs.update(kwargs)
+
+    pipe = magnify.microfluidic_chip_pipe(
+        **default_kwargs,
     )
 
     if pipes is not None:   
@@ -47,7 +53,9 @@ def lagoons_pipe(
     if pre_hflip:
         pipe.add_pipe("horizontal_flip", before="stitch")
 
+    pipe.remove_pipe("filter_leaky")
+
     if return_pipe:
         return pipe
-
+    
     return pipe(data)
