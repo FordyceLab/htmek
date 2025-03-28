@@ -2,6 +2,7 @@ import numpy as np
 from skimage.transform import rescale
 import tifffile as tf
 from pathlib import Path
+import magnify
 
 
 def bin2x2(array: np.array) -> np.array:
@@ -41,5 +42,6 @@ def make_binned_tiff(
     array = bin2x2(data.image.to_numpy())
 
     tf.imwrite(output, array)
-
-    print(f'File written to {output}.')
+    
+    if verbose:
+        print(f'File written to {output}.')
