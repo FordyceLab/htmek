@@ -19,6 +19,16 @@ def standards_pipe(
     **kwargs,
 ):
     """Pipeline for obtaining a chip object specific for Standards.
+
+    Notes
+    -----
+    For `assay` pipelines (Standards and Kinetics), it is expected that
+    there will be some signal in the blank chambers. `magnify` does not
+    adjust blank chambers when circle-finding, so these would be poorly
+    identified. In Standards and Kinetics images, there is almost always
+    enough signal to find the chambers correctly. Therefore, the magnify
+    pipeline is performed with a nonsense string first, and then these
+    'tag' values are adjusted in the final chip.
     
     See magnify.microfluidic_chip_pipe for docs:
     
@@ -30,12 +40,12 @@ def standards_pipe(
         pinlist=pinlist,
         overlap=overlap,
         rotation=rotation,
-        blank=blank,
+        blank='bananas', # nonsense string
         high_edge_quantile=0.990,
         min_button_diameter=65,
         max_button_diameter=70,
         chamber_diameter=75,
-        min_roundness=0.20,
+        min_roundness=0.10, # lower for reaction chambers
         roi_length=None,
         **kwargs,
     )
@@ -52,7 +62,12 @@ def standards_pipe(
     if return_pipe:
         return pipe
 
-    return pipe(data)
+    chip = pipe(data)
+
+    # Adjust pinlist blanks to magnify blank value (empty string)
+    chip['tag'] = chip.tag.str.replace(blank, '')
+
+    return chip
 
 
 ######################
