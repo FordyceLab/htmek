@@ -160,11 +160,3 @@ def fit_standard_curve(df, mark_row, mark_col):
     except:
         return np.nan, np.nan, np.nan, np.nan
 
-def plot_all_std_curves(standards_df):
-    ax = plt.subplot()
-    n_chambers = 200
-    for i in range(n_chambers):
-        row, col = np.random.choice(standards_df['mark_row'].unique()), np.random.choice(standards_df['mark_col'].unique())
-        plotting_dat = standards_df[(standards_df['mark_col'] == col) & (standards_df['mark_row'] == row)]
-        ax.scatter(plotting_dat.standard_conc, plotting_dat.median_intensity, color='blue', alpha=0.1)
-        ax.set_title(f"Standard curves from {n_chambers} chambers")
