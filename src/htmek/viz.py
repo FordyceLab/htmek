@@ -269,7 +269,8 @@ def chamber_map(
     chip: xr.Dataset,
     imscale: float = None,
     limits: None | tuple[int, int] = None,
-    chamber_mask: bool = False,
+    chamber_mask: bool = True,
+    time_dim: None | str = None,
 ) -> hv.DynamicMap:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -283,6 +284,10 @@ def chamber_map(
         A tuple of ints for intensity limits. Defaults to (min, max) of
         a given chamber. Hot spots can make chambers look less bright
         than others if left as None.
+    chamber_mask :
+        Whether to show the mask over the chamber.
+    time_dim :
+        The name of the dimension that indicates the time.
 
     Returns
     -------
@@ -293,21 +298,48 @@ def chamber_map(
     --------
     >>> htmek.viz.chamber_map(chip)
     """
-    def chamber(col, row):
-        p = view(
-            chip,
-            chamber = (col, row),
-            imscale = imscale,
-            limits = limits,
-            chamber_mask = True,
-        )
+    if time_dim is None:
+        time_dim = 'time'
+    else:
+        if time_dim not in chip.dims:
+            raise ValueError(f'Time dimension `{time_dim}` not found.')
 
-        return p
+    kdims = []
+    
+    if time_dim in chip.dims:
+        def timecourse(time, col, row):
+            p = view(
+                chip.sel({time_dim: time}),
+                chamber = (col, row),
+                imscale = imscale,
+                limits = limits,
+                chamber_mask = chamber_mask,
+            )
 
-    col = hv.Dimension('col', values=range(32))
-    row = hv.Dimension('row', values=range(56))
+            return p
+        
+        f = timecourse
 
-    dmap = hv.DynamicMap(chamber, kdims=[col, row])
+        kdims.append(hv.Dimension('time', values=chip[time_dim].values))
+
+    else:
+        def chamber(col, row):
+            p = view(
+                chip,
+                chamber = (col, row),
+                imscale = imscale,
+                limits = limits,
+                chamber_mask = chamber_mask,
+            )
+
+            return p
+        
+        f = chamber
+
+    kdims.append(hv.Dimension('col', values=range(32)))
+    kdims.append(hv.Dimension('row', values=range(56)))
+
+    dmap = hv.DynamicMap(f, kdims=kdims)
     dmap.opts(framewise=True)
 
     return dmap
