@@ -1,5 +1,13 @@
+from tqdm import tqdm
+
+import htmek
 import numpy as np
 import pandas as pd
+
+from scipy.optimize import curve_fit
+
+from pandarallel import pandarallel
+pandarallel.initialize(progress_bar=True)
 
 import magnify
 
@@ -67,3 +75,137 @@ def kinetics_pipe(
     chip['tag'] = chip.tag.str.replace(blank, '')
 
     return chip
+
+def get_product_conc_PBP(x, standards_df):
+    RFU = x['median_intensity']
+    col = x['mark_col']
+    row = x['mark_row']
+
+    standard_rows = standards_df[(standards_df['mark_row'] == row) & (standards_df['mark_col'] == col)]
+    
+    exceeds_PBP_cutoff = False
+
+    if not standard_rows.empty:
+        popt = standard_rows[['A', 'KD', 'PS',	'I_0uMP_i']].iloc[0].values
+        product_conc = htmek.assays.standards.compute_PBP_product(RFU, popt)
+
+        # If RFU above 50uM Pi RFU, set a flag
+        if RFU > htmek.assays.standards.PBP_isotherm(75, *popt):
+            exceeds_PBP_cutoff = True
+
+        return round(float(product_conc), 2), exceeds_PBP_cutoff
+    else:
+        popt = np.nan, np.nan, np.nan, np.nan
+        return np.nan, exceeds_PBP_cutoff
+
+def single_exponential(x, A, k, y0):
+    # x = x[:3]
+    # return (k*x) + A + C
+    return A*(1-np.exp(-k*x))+y0
+
+def fit_single_exponential_turnover(assays_df, remove_RFUs_above_PBP_cutoff=True):
+     
+    # Copy to new df
+    assays_df.sort_values(['mark_col', 'mark_row', 'substrate_conc'], inplace=True)
+
+    # Drop rows with NaNs in 'seconds' or 'product_conc'
+    assays_df = assays_df.dropna(subset=['acq_time', 'product_conc'])
+
+    # Drop RFUs above PBP cutoff
+    if remove_RFUs_above_PBP_cutoff:
+        assays_df = assays_df[assays_df['exceeds_PBP_cutoff'] == False]
+
+    # Group by 'mark_row', 'mark_col', and 'substrate_conc'
+    grouped = assays_df.groupby(['mark_row', 'mark_col', 'substrate_conc'])
+
+    # Iterate over the groups with tqdm to show progress
+    for (r,c,s), group in tqdm(grouped, total=len(grouped)):
+        seconds = group['acq_time'].to_numpy()
+        product_concs = group['product_conc'].to_numpy()
+
+        # Mask rows that match the current group key
+        row_mask = (
+            (assays_df["mark_row"] == r) &
+            (assays_df["mark_col"] == c) &
+            (assays_df["substrate_conc"] == s)
+        )
+
+        if len(seconds) > 2:
+            p0 = [s, 0.01, product_concs[0]] # A, k, y0
+            try:
+                popt, _ = curve_fit(htmek.assays.kinetics.single_exponential, 
+                                    seconds, product_concs, 
+                                    maxfev=100000, p0=p0,
+                                    bounds=([0, 0, -np.inf],[s*1.5, 1, np.inf])
+                                    )
+                A, k, y0 = popt[0], popt[1], popt[2]
+            except RuntimeError:
+                A, k, y0 = np.nan, np.nan, np.nan
+        else:
+                A, k, y0 = np.nan, np.nan, np.nan
+
+        assays_df.loc[row_mask, 'A'] = A # Assign 'A' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'k'] = k # Assign 'k' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'y0'] = y0 # Assign 'y0' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'init_rate'] = A*k # Assign 'k' to the group in the original assays_dfaFrame
+
+    return assays_df
+
+def michaelis_menten(S, vmax, KM):
+    return (vmax*S)/(KM+S)
+
+def fit_michaelis_menten(assays_df, p0):
+     
+    # Copy to new df
+    assays_df.sort_values(['mark_col', 'mark_row', 'substrate_conc'], inplace=True)
+
+    # Drop rows with NaNs
+    assays_df = assays_df.dropna(subset=['substrate_conc', 'k'])
+
+    # Group by 'mark_row', 'mark_col', and 'substrate_conc'
+    grouped = assays_df.groupby(['mark_row', 'mark_col'])
+
+    # Iterate over the groups with tqdm to show progress
+    for (r,c), group in tqdm(grouped, total=len(grouped)):
+        substrate_concs = group['substrate_conc'].to_numpy()
+        initial_rates = group['init_rate'].to_numpy()
+        enzyme_conc = group['EnzymeConc'].iloc[0]
+
+        # Mask rows that match the current group key
+        row_mask = (
+            (assays_df["mark_row"] == r) &
+            (assays_df["mark_col"] == c)
+        )
+
+        if len(substrate_concs) > 2:
+            try:
+                popt, _ = curve_fit(htmek.assays.kinetics.michaelis_menten, 
+                                    substrate_concs, 
+                                    initial_rates, 
+                                    maxfev=100000, 
+                                    p0=p0, 
+                                    bounds=([0, 0], [1,1000])
+                                    )
+                vmax, KM = popt[0], popt[1]
+            except RuntimeError:
+                vmax, KM = np.nan, np.nan
+        else:
+                vmax, KM = np.nan, np.nan
+
+        kcat = (vmax/(enzyme_conc/1000)) # Convert nM to uM
+        kcat_over_KM = kcat/KM # In uM^-1 s^-1 
+        kcat_over_KM = kcat_over_KM * 1e6 # In M^-1 s^-1 
+
+        
+        residuals = initial_rates - htmek.assays.kinetics.michaelis_menten(substrate_concs, vmax, KM)
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((initial_rates - np.mean(initial_rates))**2)
+        r_squared = 1 - (ss_res / ss_tot)
+        
+        assays_df.loc[row_mask, 'vmax'] = vmax # Assign 'vmax' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'KM'] = KM # Assign 'KM' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'kcat'] = kcat # Assign 'kcat' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'kcat_over_KM'] = kcat_over_KM # Assign 'kcat_over_KM' to the group in the original assays_dfaFrame
+        assays_df.loc[row_mask, 'MM_R2'] = r_squared
+
+    return assays_df
