@@ -4,6 +4,10 @@ import holoviews as hv
 from holoviews.operation.datashader import rasterize
 hv.extension('bokeh')
 
+import matplotlib.pyplot as plt
+
+import htmek.assays.kinetics
+
 import magnify
 import xarray as xr
 
@@ -332,3 +336,124 @@ def PBP_map(
     dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
 
     return dmap
+
+def plot_all_std_curves(standards_df):
+    ax = plt.subplot()
+    n_chambers = 200
+    for i in range(n_chambers):
+        row, col = np.random.choice(standards_df['mark_row'].unique()), np.random.choice(standards_df['mark_col'].unique())
+        plotting_dat = standards_df[(standards_df['mark_col'] == col) & (standards_df['mark_row'] == row)]
+        ax.scatter(plotting_dat.standard_conc, plotting_dat.median_intensity, color='blue', alpha=0.1)
+        ax.set_title(f"Standard curves from {n_chambers} chambers")
+
+def plot_sample_progress_curves(assays_df):
+    dat = assays_df.dropna()
+
+    fig, ax = plt.subplots(figsize=(3,3),dpi=200)
+    mutants = []
+    for i in range(4):
+        row, col = np.random.choice(dat['mark_row'].unique()), np.random.choice(dat['mark_col'].unique())
+
+        substrate_conc = 50
+        plotting_dat = dat[(dat['mark_col'] == col) & (dat['mark_row'] == row) & (dat['substrate_conc'] == substrate_conc)]
+        seconds, rois = plotting_dat.acq_time, plotting_dat.product_conc
+
+        if not np.isnan(plotting_dat.A.iloc[0]):
+            xlin = np.arange(0,2000,1)
+            A, k, y0 = plotting_dat.A.iloc[0], plotting_dat.k.iloc[0], plotting_dat.y0.iloc[0],
+            ax.plot(xlin, htmek.assays.kinetics.single_exponential(xlin,A,k,y0))
+
+        mutantID = plotting_dat['tag'].iloc[0]
+
+        ax.scatter(seconds, rois, label=f"{mutantID} ({row},{col})")
+        mutants.append(mutantID)
+
+    plt.xlabel("Time (s)")
+    plt.ylabel("Pi Conc (uM)")
+    plt.title(f"{substrate_conc}uM BzP")
+    plt.legend(title='Variant', bbox_to_anchor=(1,1), loc="upper left")
+    plt.show()
+
+def compare_sample_progress_curves_vs_MM(expression_df, assays_df):
+    fig, axs = plt.subplots(1, 2, figsize=(7, 4))
+
+    row, col = expression_df[(expression_df['tag'] == 'Y11F')][['mark_row', 'mark_col']].iloc[0]
+    row, col = np.random.randint(56), np.random.randint(32)
+
+    dat = assays_df[(assays_df['mark_col'] == col) & (assays_df['mark_row'] == row)]
+
+    # Define a color dictionary for substrate concentrations
+    substrate_colors = {s: plt.cm.viridis(i / len(dat['substrate_conc'].unique())) for i, s in enumerate(sorted(dat['substrate_conc'].unique()))}
+
+    for s in dat['substrate_conc'].unique():
+        sub_dat = dat[dat['substrate_conc'] == s]
+        times = sub_dat['acq_time']
+        product_concs = sub_dat['product_conc']
+        A = sub_dat['A'].iloc[0]
+        k = sub_dat['k'].iloc[0]
+        y0 = sub_dat['y0'].iloc[0]
+        
+        axs[0].scatter(times, product_concs, alpha=0.5, color=substrate_colors[s])
+        axs[0].plot(times, htmek.assays.kinetics.single_exponential(times, A, k, y0), label=f"[S] = {s} µM", color=substrate_colors[s])
+
+    axs[0].set_ylabel("[Product] (uM)")
+    axs[0].set_xlabel("Time (s)")
+
+    kcat = dat['kcat'].iloc[0]
+    KM = dat['KM'].iloc[0]
+    vmax = dat['vmax'].iloc[0]
+    kcat_over_KM = dat['kcat_over_KM'].iloc[0]
+
+    xlin = np.arange(0, max(substrate_colors), 1)
+
+    axs[1].scatter(dat['substrate_conc'], dat['init_rate'], alpha=0.5, color=[substrate_colors[s] for s in dat['substrate_conc']])
+    axs[1].plot(xlin, htmek.assays.kinetics.michaelis_menten(xlin, vmax, KM), label=f"KM = {KM:.2f}\nvmax = {vmax:.3f}")
+    axs[1].set_ylabel("Initial Rate")
+    axs[1].set_xlabel("[Substrate] (uM)")
+    axs[1].legend()
+    axs[1].set_ylim(-0.01, 0.2)
+    axs
+
+    fig.suptitle(f"{dat['tag'].iloc[0]} ({row},{col})\nkcat/KM: {kcat_over_KM:,.0f}")
+    plt.tight_layout()
+
+def plot_kcat_KM_by_sequence_boxplot(assays_df):
+    dat = assays_df.copy()
+
+    dat['position'] = dat['tag'].apply(lambda x: int(x[1:-1]) if x[1:-1].isdigit() else x)
+    dat['library'] = dat['tag'].apply(lambda x: x[-1] if x[1:-1].isdigit() else x)
+    dat['log_kcat_over_KM'] = np.log10(dat['kcat_over_KM'])
+    dat = dat.drop_duplicates(subset=['mark_col', 'mark_row'])
+
+    dat.sort_values(by=['position', 'library'], inplace=True)
+
+    def hook(plot, element):
+        plot.handles['x_range'].factors = [str(value) for value in range(1,99)]
+
+    # Create a Holoviews boxplot
+    boxplot = hv.BoxWhisker(dat, kdims=['tag'], vdims=['log_kcat_over_KM', 'library'], label='kcat/KM Boxplot')
+    boxplot.opts(
+        width=1200,
+        height=400,
+        xlabel='Tag',
+        ylabel='kcat/KM',
+        title='kcat/KM Boxplot',
+        xrotation=45,
+        tools=['hover'],
+        # hooks=[hook]
+    )
+
+    # Overlay points as scatter
+    scatter = hv.Scatter(dat, kdims=['tag'], vdims=['log_kcat_over_KM', 'mark_row', 'mark_col', 'EnzymeConc', 'library'], label='kcat/KM Scatter')
+    scatter.opts(
+        size=5,
+        alpha=0.5,
+        color='red',
+        tools=['hover'],
+        # hooks=[hook]
+    )
+
+    # Combine boxplot and scatter
+    overlay = boxplot * scatter
+    
+    return overlay
