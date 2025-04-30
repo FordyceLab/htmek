@@ -68,12 +68,55 @@ hv.opts.defaults(*hv_defaults)
 ######################
 # General plotting
 ######################
+def show_mask(
+    chip: xr.Dataset,
+    chamber: None | tuple[int, int] = None,
+    imscale: float = None,
+) -> hv.Image:
+    """Show the mask for a given chip or chamber."""
+    if chamber:
+        subset = chip.sel(mark_col=chamber[0], mark_row=chamber[1])
+        data = subset.fg.to_numpy()
+        if imscale is None:
+            imscale = 2
+        title=f'Chamber {chamber}'
+        x = subset.x.data
+        y = subset.y.data
+        xs = x - len(subset.roi_x), x + len(subset.roi_x)
+        ys = y - len(subset.roi_y), y + len(subset.roi_y)
+
+    # Need to flip vertically to align with hv.Image bounds behavior
+    # Requires "invert_yaxis" to be True below
+    data = np.flipud(data)
+    
+    # Set the mask to nans so that it can be "clipped" in the image
+    data = np.select([data == True], [np.nan], data)
+
+    p = hv.Image(
+        data,
+        bounds = (xs[0], ys[0], xs[-1], ys[-1]),
+        vdims = 'intensity',
+    ).opts(
+        title=title,
+        frame_width=int(len(data[0])*imscale),
+        frame_height=int(len(data)*imscale),
+        clipping_colors={'NaN': (0, 0, 0, 0)},
+        cmap='gray',
+        alpha=0.3,
+        invert_xaxis=True,
+        invert_yaxis=True,
+    )
+
+    return p
+
+
 def view(
     chip: xr.Dataset,
     chamber: None | tuple[int, int] = None,
     rastered: bool = True,
     imscale: float = None,
     limits: None | tuple[int, int] = None,
+    chamber_mask: float = True,
 ) -> hv.Image:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -92,6 +135,8 @@ def view(
         scaled up to 2 for chamber.
     limits :
         A tuple of ints for intensity limits.
+    chamber_mask :
+        Only relevant if chamber is not None. Shows the mask over it.
 
     Returns
     -------
@@ -158,6 +203,9 @@ def view(
     if rastered:
         p = rasterize(p)
 
+    if chamber_mask and chamber is not None:
+        p = p*show_mask(chip, chamber, imscale).opts(framewise=True)
+
     return p
 
 
@@ -221,6 +269,7 @@ def chamber_map(
     chip: xr.Dataset,
     imscale: float = None,
     limits: None | tuple[int, int] = None,
+    chamber_mask: bool = False,
 ) -> hv.DynamicMap:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -245,17 +294,21 @@ def chamber_map(
     >>> htmek.viz.chamber_map(chip)
     """
     def chamber(col, row):
-        return view(chip, chamber=(col, row), imscale=imscale, limits=limits)
+        p = view(
+            chip,
+            chamber = (col, row),
+            imscale = imscale,
+            limits = limits,
+            chamber_mask = True,
+        )
+
+        return p
 
     col = hv.Dimension('col', values=range(32))
     row = hv.Dimension('row', values=range(56))
 
     dmap = hv.DynamicMap(chamber, kdims=[col, row])
-    dmap.opts(
-        framewise=True,
-        colorbar=True,
-        colorbar_opts=dict(title='intensity'),
-    )
+    dmap.opts(framewise=True)
 
     return dmap
 
