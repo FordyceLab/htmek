@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 import magnify
@@ -69,64 +70,70 @@ def standards_pipe(
 
     return chip
 
-
-######################
-# PBP
-######################
-
 def PBP_isotherm(
     P_i,
-    RFU,
+    A,
     KD,
     PS,
     I_0uMP_i,
 ):
-    """Isotherm for PBP binding Pi."""
-    radicand = (KD + PS + P_i)**2 - 4*PS*P_i
-    product = KD + P_i + PS - np.sqrt(radicand)
-    return 0.5*RFU*product + I_0uMP_i
-    
-    return P_is_func
+    """Isotherm for single-site Pi:PBP binding.
+    Parameters
+    ----------
+    P_i : float
+        Free phosphate concentration.
+    A : float
+        Amplitude of the isotherm.
+    KD : float
+        Dissociation constant.
+    PS : float
+        PBP concentration.
+    I_0uMP_i : float
+        RFU value at 0 uM Pi.
 
-def invert_PBP_isotherm():
-    """Invert the PBP isotherm with sympy."""
-    # Define symbols
-    P_i, RFU, KD, PS, I_0uMP_i, product = sp.symbols('P_i RFU KD PS I_0uMP_i product')
+    Returns
+    -------
+    float
+        Predicted RFU value.
+    """
+    return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I_0uMP_i
 
-    # Define isotherm
-    radicand = (KD + PS + P_i)**2 - 4*PS*P_i
-    product = KD + P_i + PS - sp.sqrt(radicand)
-    isotherm = 0.5*RFU*product + I_0uMP_i
+def PBP_isotherm_inverse(
+    RFU,
+    A,
+    KD,
+    PS,
+    I_0uMP_i
+):
+    """Inverse of single-site Pi:PBP binding isotherm
+        Parameters
+    ----------
+    RFU : float
+        RFU value.
+    A : float
+        Amplitude of the isotherm.
+    KD : float
+        Dissociation constant.
+    PS : float
+        PBP concentration.
+    I_0uMP_i : float
+        RFU value at 0 uM Pi.
 
-    # Solve for P_i
-    P_i_solutions = sp.solve(isotherm, P_i)
-
-    # Print the solutions
-    print("Solutions for P_i:", P_i_solutions)
-
-    # Select the correct solution (the one that is real and positive)
-    # This might require some manual inspection of the solutions
-    # Assuming the first solution is the correct one
-    inverted_PBP_isotherm = P_i_solutions[0]
-
-    return inverted_PBP_isotherm
+    Returns
+    -------
+    float
+        Predicted free phosphate concentration.
+    """
+    return (-A*I_0uMP_i*KD - A*I_0uMP_i*PS + A*KD*RFU + A*PS*RFU - I_0uMP_i**2 + 2.0*I_0uMP_i*RFU - RFU**2)/(A*(A*PS + I_0uMP_i - RFU))
 
 def compute_PBP_product(
     RFU,
     popt,
-    inverted_PBP_isotherm
 ):
-    """Compute P_i values from RFUs from inverted PBP function."""
-    KD, PS, I_0uMP_i = popt[1:]
+    """Compute [P_i] values from RFU from inverted PBP function."""
+    A, KD, PS, I_0uMP_i = popt
     
-    P_i = inverted_PBP_isotherm.evalf(subs={
-        'RFU': RFU,
-        'KD': KD,
-        'PS': PS,
-        'I_0uMP_i': I_0uMP_i,
-    })
-    
-    return P_i
+    return PBP_isotherm_inverse(RFU, A, KD, PS, I_0uMP_i)
 
 def fit_PBP(
     P_is,
@@ -142,3 +149,22 @@ def fit_PBP(
     )
 
     return popt, pcov
+
+def fit_standard_curve(df, mark_row, mark_col):
+    dat = df[(df['mark_col'] == mark_col) & (df['mark_row'] == mark_row)]
+    concs = dat.standard_conc.values
+    median_intensities = dat.median_intensity.values
+    try:
+        popt, pcov = fit_PBP(concs, median_intensities)
+        return popt
+    except:
+        return np.nan, np.nan, np.nan, np.nan
+
+def plot_all_std_curves(standards_df):
+    ax = plt.subplot()
+    n_chambers = 200
+    for i in range(n_chambers):
+        row, col = np.random.choice(standards_df['mark_row'].unique()), np.random.choice(standards_df['mark_col'].unique())
+        plotting_dat = standards_df[(standards_df['mark_col'] == col) & (standards_df['mark_row'] == row)]
+        ax.scatter(plotting_dat.standard_conc, plotting_dat.median_intensity, color='blue', alpha=0.1)
+        ax.set_title(f"Standard curves from {n_chambers} chambers")
