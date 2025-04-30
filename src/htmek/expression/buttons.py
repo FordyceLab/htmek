@@ -12,6 +12,7 @@ def buttons_pipe(
     blank='BLANK',
     post_hflip=True,
     pre_hflip=False,
+    basic_correct=False,
     pipes=None,
     return_pipe=False,
     **kwargs,
@@ -46,6 +47,8 @@ def buttons_pipe(
         pipe.add_pipe("horizontal_flip", after="stitch")
     if pre_hflip:
         pipe.add_pipe("horizontal_flip", before="stitch")
+    if basic_correct:
+        pipe.add_pipe("basic_correct", before="stitch")
 
     if return_pipe:
         return pipe
