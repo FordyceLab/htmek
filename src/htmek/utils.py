@@ -2,11 +2,12 @@ import numpy as np
 from skimage.transform import rescale
 import tifffile as tf
 from pathlib import Path
-
 import magnify
 
 
-def bin2x2(array: np.array) -> np.array:
+def bin2x2(
+    array: np.array,
+) -> np.array:
     """Takes an unbinned image and performs a correction to match the
     2x2 binning performed by the camera."""
 
@@ -19,6 +20,9 @@ def bin2x2(array: np.array) -> np.array:
 
     # Scale intensity by difference in image size
     array_2x2 = array_2x2 * (x / new_x) * (y / new_y)
+
+    # Adjust to 16-bit int
+    array_2x2 = np.clip(array_2x2, 0, 65535).astype('uint16')
 
     return array_2x2
 
@@ -42,8 +46,7 @@ def make_binned_tiff(
 
     array = bin2x2(data.image.to_numpy())
 
-    array = array.astype('int16')
-
     tf.imwrite(output, array)
-
-    print(f'File written to {output}.')
+    
+    if verbose:
+        print(f'File written to {output}.')
