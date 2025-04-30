@@ -1,8 +1,10 @@
-from tqdm import tqdm
-
 import htmek
+import htmek.assays.standards
+
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from scipy.optimize import curve_fit
 
@@ -76,7 +78,7 @@ def kinetics_pipe(
 
     return chip
 
-def get_product_conc_PBP(x, standards_df):
+def get_product_conc_PBP(x, standards_df, pbp_conc=None, cutoff=None):
     RFU = x['median_intensity']
     col = x['mark_col']
     row = x['mark_row']
@@ -89,8 +91,11 @@ def get_product_conc_PBP(x, standards_df):
         popt = standard_rows[['A', 'KD', 'PS',	'I_0uMP_i']].iloc[0].values
         product_conc = htmek.assays.standards.compute_PBP_product(RFU, popt)
 
+        if cutoff == None:
+            cutoff = pbp_conc * (2/3)
+
         # If RFU above 50uM Pi RFU, set a flag
-        if RFU > htmek.assays.standards.PBP_isotherm(75, *popt):
+        if RFU > htmek.assays.standards.PBP_isotherm(cutoff, *popt):
             exceeds_PBP_cutoff = True
 
         return round(float(product_conc), 2), exceeds_PBP_cutoff
@@ -133,7 +138,7 @@ def fit_single_exponential_turnover(assays_df, remove_RFUs_above_PBP_cutoff=True
         if len(seconds) > 2:
             p0 = [s, 0.01, product_concs[0]] # A, k, y0
             try:
-                popt, _ = curve_fit(htmek.assays.kinetics.single_exponential, 
+                popt, _ = curve_fit(single_exponential, 
                                     seconds, product_concs, 
                                     maxfev=100000, p0=p0,
                                     bounds=([0, 0, -np.inf],[s*1.5, 1, np.inf])
@@ -148,6 +153,24 @@ def fit_single_exponential_turnover(assays_df, remove_RFUs_above_PBP_cutoff=True
         assays_df.loc[row_mask, 'k'] = k # Assign 'k' to the group in the original assays_dfaFrame
         assays_df.loc[row_mask, 'y0'] = y0 # Assign 'y0' to the group in the original assays_dfaFrame
         assays_df.loc[row_mask, 'init_rate'] = A*k # Assign 'k' to the group in the original assays_dfaFrame
+
+    return assays_df
+
+def calculate_enzyme_conc(expression_df, assays_df):
+    expression_df['EnzymeConc'] = expression_df['summed_button_egfp_intensity']/100000
+
+    # drop summed if exists
+    for c in assays_df.columns:
+        if 'summed_button_egfp_intensity' in c:
+            assays_df = assays_df.drop(columns=[c])
+        if 'EnzymeConc' in c:
+            assays_df = assays_df.drop(columns=[c])
+
+    # merge in 
+    assays_df = pd.merge(assays_df, expression_df[['mark_col', 'mark_row', 'summed_button_egfp_intensity', 'EnzymeConc']], on=['mark_col', 'mark_row'])
+
+    # normalize rate to expression
+    assays_df['normalized_rate'] = (assays_df['init_rate']/assays_df['EnzymeConc'])
 
     return assays_df
 
@@ -170,6 +193,12 @@ def fit_michaelis_menten(assays_df, p0):
         substrate_concs = group['substrate_conc'].to_numpy()
         initial_rates = group['init_rate'].to_numpy()
         enzyme_conc = group['EnzymeConc'].iloc[0]
+        num_points_fit = len(initial_rates)
+
+        # Initialize two point fit flag
+        two_point_fit = False
+        if len(initial_rates) == 2:
+            two_point_fit = True
 
         # Mask rows that match the current group key
         row_mask = (
@@ -179,12 +208,12 @@ def fit_michaelis_menten(assays_df, p0):
 
         if len(substrate_concs) > 2:
             try:
-                popt, _ = curve_fit(htmek.assays.kinetics.michaelis_menten, 
+                popt, _ = curve_fit(michaelis_menten, 
                                     substrate_concs, 
                                     initial_rates, 
                                     maxfev=100000, 
                                     p0=p0, 
-                                    bounds=([0, 0], [1,1000])
+                                    bounds=([0, 0], [np.inf, 2000])
                                     )
                 vmax, KM = popt[0], popt[1]
             except RuntimeError:
@@ -195,9 +224,8 @@ def fit_michaelis_menten(assays_df, p0):
         kcat = (vmax/(enzyme_conc/1000)) # Convert nM to uM
         kcat_over_KM = kcat/KM # In uM^-1 s^-1 
         kcat_over_KM = kcat_over_KM * 1e6 # In M^-1 s^-1 
-
         
-        residuals = initial_rates - htmek.assays.kinetics.michaelis_menten(substrate_concs, vmax, KM)
+        residuals = initial_rates - michaelis_menten(substrate_concs, vmax, KM)
         ss_res = np.sum(residuals**2)
         ss_tot = np.sum((initial_rates - np.mean(initial_rates))**2)
         r_squared = 1 - (ss_res / ss_tot)
@@ -207,5 +235,7 @@ def fit_michaelis_menten(assays_df, p0):
         assays_df.loc[row_mask, 'kcat'] = kcat # Assign 'kcat' to the group in the original assays_dfaFrame
         assays_df.loc[row_mask, 'kcat_over_KM'] = kcat_over_KM # Assign 'kcat_over_KM' to the group in the original assays_dfaFrame
         assays_df.loc[row_mask, 'MM_R2'] = r_squared
+        assays_df.loc[row_mask, 'MM_points_fit'] = num_points_fit
+        assays_df.loc[row_mask, 'MM_two_point_fit'] = two_point_fit
 
     return assays_df
