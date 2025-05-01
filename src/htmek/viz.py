@@ -176,6 +176,8 @@ def view(
             if imscale is None:
                 imscale = 2
             title=f'Chamber {chamber}'
+            if tag is None:
+                title = f'{title} ({subset.tag.values})'
             x = subset.x.data
             y = subset.y.data
             xs = x - len(subset.roi_x), x + len(subset.roi_x)
