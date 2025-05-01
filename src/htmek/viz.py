@@ -113,6 +113,7 @@ def show_mask(
 def view(
     chip: xr.Dataset,
     chamber: None | tuple[int, int] = None,
+    tag: None | str = None,
     rastered: bool = True,
     imscale: float = None,
     limits: None | tuple[int, int] = None,
@@ -127,6 +128,8 @@ def view(
     chamber :
         A tuple of ints that indicates the chamber (col, row; zero-indexed)
         to view in more detail.
+    tag : 
+        The name of a group of chambers to view in more detail.
     rastered :
         Whether to raster the image for quicker rendering. Automatically
         switches to False if chamber is not None (it's not necessary).
@@ -141,7 +144,7 @@ def view(
     Returns
     -------
     p :
-        hv.Image object of chip/chamber.
+        hv.Image object of chip/chamber(s).
 
     Examples
     --------
@@ -155,56 +158,76 @@ def view(
     This will show an image of the chamber (0,0) (column, row), setting the
     intensity bounds to 0 and 5000.
     """
+    # Check for other dimension besides row and column
+    if len(chip.image.shape) > 2:
+        raise NotImplementedError('Chip contains multiple images.')
 
-    if chamber:
-        subset = chip.sel(mark_col=chamber[0], mark_row=chamber[1])
-        data = subset.roi.to_numpy()
-        if imscale is None:
-            imscale = 2
-        title=f'Chamber {chamber}'
-        x = subset.x.data
-        y = subset.y.data
-        xs = x - len(subset.roi_x), x + len(subset.roi_x)
-        ys = y - len(subset.roi_y), y + len(subset.roi_y)
-        
-        # No need to raster the small image
-        rastered=False
-        
-    else:
-        data = chip.image.to_numpy()
-        if imscale is None:
-            imscale = 0.06
-        title=''
-        xs = chip.image.im_x.to_numpy()
-        ys = chip.image.im_y.to_numpy()
+    chambers = [chamber]
+    plots = []
 
-    if limits is None:
-        limits = (data.min(), data.max())
+    if tag is not None:
+        cols = chip.where(chip.tag == tag, drop=True).mark_col.values
+        rows = chip.where(chip.tag == tag, drop=True).mark_row.values
 
-    # Need to flip vertically to align with hv.Image bounds behavior
-    # Requires "invert_yaxis" to be True below
-    data = np.flipud(data)
+        chambers = [(col, row) for col, row in zip(cols, rows)]
 
-    p = hv.Image(
-        data,
-        bounds = (xs[0], ys[0], xs[-1], ys[-1]),
-        vdims = 'intensity',
-    ).opts(
-        title=title,
-        frame_width=int(len(data[0])*imscale),
-        frame_height=int(len(data)*imscale),
-        clim=limits,
-        invert_xaxis=True,
-        invert_yaxis=True,
-        colorbar=True,
-        colorbar_opts=dict(title='intensity'),
-    )
+        chamber = chambers[0]
 
-    if rastered:
-        p = rasterize(p)
+    for chamber in chambers:
+        if chamber is not None:
+            subset = chip.sel(mark_col=chamber[0], mark_row=chamber[1])
+            data = subset.roi.to_numpy()
+            if imscale is None:
+                imscale = 2
+            title=f'Chamber {chamber}'
+            x = subset.x.data
+            y = subset.y.data
+            xs = x - len(subset.roi_x), x + len(subset.roi_x)
+            ys = y - len(subset.roi_y), y + len(subset.roi_y)
+            
+            # No need to raster the small image
+            rastered = False
+            
+        else:
+            data = chip.image.to_numpy()
+            if imscale is None:
+                imscale = 0.06
+            title=''
+            xs = chip.image.im_x.to_numpy()
+            ys = chip.image.im_y.to_numpy()
 
-    if chamber_mask and chamber is not None:
-        p = p*show_mask(chip, chamber, imscale).opts(framewise=True)
+        if limits is None:
+            limits = (data.min(), data.max())
+
+        # Need to flip vertically to align with hv.Image bounds behavior
+        # Requires "invert_yaxis" to be True below
+        data = np.flipud(data)
+
+        p = hv.Image(
+            data,
+            bounds = (xs[0], ys[0], xs[-1], ys[-1]),
+            vdims = 'intensity',
+        ).opts(
+            title=title,
+            frame_width=int(len(data[0])*imscale),
+            frame_height=int(len(data)*imscale),
+            clim=limits,
+            invert_xaxis=True,
+            invert_yaxis=True,
+            colorbar=True,
+            colorbar_opts=dict(title='intensity'),
+        )
+
+        if rastered:
+            p = rasterize(p)
+
+        if chamber_mask and chamber is not None:
+            p = p*show_mask(chip, chamber, imscale).opts(framewise=True)
+
+        plots.append(p)
+
+    if tag:
+        p = hv.Layout(plots).opts(title=f'Tag: {tag}', shared_axes=False)
 
     return p
 
