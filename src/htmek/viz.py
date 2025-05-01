@@ -166,12 +166,8 @@ def view(
     plots = []
 
     if tag is not None:
-        cols = chip.where(chip.tag == tag, drop=True).mark_col.values
-        rows = chip.where(chip.tag == tag, drop=True).mark_row.values
-
-        chambers = [(col, row) for col, row in zip(cols, rows)]
-
-        chamber = chambers[0]
+        chip = chip.stack(chamber=("mark_col", "mark_row"))
+        chambers = chip.where(chip.tag == tag, drop=True).chamber.values
 
     for chamber in chambers:
         if chamber is not None:
@@ -214,6 +210,8 @@ def view(
             clim=limits,
             invert_xaxis=True,
             invert_yaxis=True,
+            xlabel='',
+            ylabel='',
             colorbar=True,
             colorbar_opts=dict(title='intensity'),
         )
@@ -227,7 +225,12 @@ def view(
         plots.append(p)
 
     if tag:
-        p = hv.Layout(plots).opts(title=f'Tag: {tag}', shared_axes=False)
+        p = hv.Layout(
+            plots
+        ).opts(
+            title=f'Tag: {tag}',
+            shared_axes=False
+        ).cols(3)
 
     return p
 
