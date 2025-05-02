@@ -98,6 +98,24 @@ def PBP_isotherm(
     """
     return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I_0uMP_i
 
+def fit_PBP(
+    P_is,
+    RFUs,
+):
+    """Curve fit PBP isotherm with intial guesses and bounds. This function
+    returns the fitting function.
+    
+    """
+    popt, pcov = curve_fit(
+        PBP_isotherm,
+        P_is,
+        RFUs,
+        p0 = [40, 1, 50, 500],
+        bounds = ([0]*4, [np.inf]*4),
+    )
+
+    return popt, pcov, PBP_isotherm
+
 def PBP_isotherm_inverse(
     RFU,
     A,
@@ -134,21 +152,6 @@ def compute_PBP_product(
     A, KD, PS, I_0uMP_i = popt
     
     return PBP_isotherm_inverse(RFU, A, KD, PS, I_0uMP_i)
-
-def fit_PBP(
-    P_is,
-    RFUs,
-):
-    """Curve fit PBP isotherm with intial guesses and bounds."""
-    popt, pcov = curve_fit(
-        PBP_isotherm,
-        P_is,
-        RFUs,
-        p0 = [40, 1, 50, 500],
-        bounds = ([0]*4, [np.inf]*4),
-    )
-
-    return popt, pcov
 
 def fit_standard_curve(df, mark_row, mark_col):
     dat = df[(df['mark_col'] == mark_col) & (df['mark_row'] == mark_row)]

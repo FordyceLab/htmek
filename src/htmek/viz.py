@@ -6,11 +6,10 @@ hv.extension('bokeh')
 
 import matplotlib.pyplot as plt
 
-import htmek.assays.kinetics
-
 import magnify
 import xarray as xr
 
+from .assays.kinetics import single_exponential, michaelis_menten
 from .assays.standards import PBP_isotherm, fit_PBP
 from .process import to_df
 
@@ -372,6 +371,149 @@ def chamber_map(
 
     return dmap
 
+#########################
+# General fitting
+#########################
+def plot_fit(
+    xs,
+    ys,
+    model,
+    popt,
+    x_label = 'x',
+    y_label = 'y',
+    row = 'mark_row',
+    col = 'mark_col',
+    hover_tools = [],
+    failed = 'Failed',
+):
+    """Plot a fit given data (xs, ys), model for data, and popt from
+    a previous fit.
+    """
+    xs_full = np.linspace(0, np.max(xs)*1.1, 1000)
+
+    p_data = hv.Scatter(
+        (xs, ys, row, col),
+        kdims = x_label,
+        vdims = [y_label, row, col],
+    )
+
+    if failed not in popt:
+        p_fit = hv.Curve(
+            (xs_full, model(xs_full, *popt), row, col),
+            kdims = x_label,
+            vdims = [y_label, row, col],
+        )
+        p = p_fit*p_data
+    else:
+        p = p_data
+
+    return p_fit*p_data
+
+
+def fit_map(
+    df: pd.DataFrame,
+    func,
+    x: str,
+    y: str,
+    row: str = 'mark_row',
+    col: str = 'mark_col',
+    fit_dict: None | dict = None,
+):
+    """Creates a hv.DynamicMap to display fits across all chambers.
+
+    Parameters
+    ----------
+    df :
+        A tidy pandas DataFrame containing PBP fluorescence data (y) across
+        multiple concentrations (x) for all chambers (mark_row, mark_col).
+    func :
+        Function related to the fit. If no fit_dict is passed, it should be
+        the function used to fit the data (e.g., that uses curve_fit) and
+        must return the modeling function as the third argument. If you
+        pass a fit_dict, it should be the modeling function itself (the
+        function passed to curve_fit).
+    x :
+        Name of the x axis (e.g., standard concentration).
+    y :
+        Name of the y axis (e.g., fluorescence signal).
+    row :
+        Name of df column containing row information ('mark_row' from
+        magnify.
+    col :
+        Name of df column containing column information ('mark_col' from
+        magnify.
+    fit_dict :
+        Optionally add a dictionary of fit popt/pcovs. This function is
+        generally very fast to compute and plot, but in some instances
+        a dictionary lookup will be noticably faster.
+    
+    Returns
+    -------
+    dmap :
+        hv.DynamicMap of fits for all chambers.
+    
+    """
+    def fit(mark_col, mark_row):
+        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
+
+        xs, ys = sub_df[x].values, sub_df[y].values
+        if fit_dict is None:
+            fit_func = func
+            popt, pcov, model = fit_func(xs, ys)
+        else:
+            popt, pcov = fit_dict[mark_row, mark_col]
+            model = func
+        ylim = (0, df[y].max())
+
+        p = plot_fit(
+            xs,
+            ys,
+            model,
+            popt,
+            x,
+            y,
+            row,
+            col,
+        ).opts(ylim=ylim)
+
+        return p
+
+    mark_col = hv.Dimension('column', values=range(32))
+    mark_row = hv.Dimension('row', values=range(56))
+
+    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
+
+    return dmap
+
+
+def sample_fit_map(
+    fit_map: hv.DynamicMap,
+    n: int = 100,
+    row: str = 'mark_row',
+    col: str = 'mark_col',
+    alpha: float = 0.1,
+) -> hv.Overlay:
+    """Samples a fit_map to show a sample of the data"""
+    plots = []
+
+    sample = np.random.choice(
+        [f'{row}_{col}' for row in range(56) for col in range(32)],
+        size = n,
+        replace = False,
+    )
+
+    for chamber in sample:
+        row, col = chamber.split('_')
+        row, col = int(row), int(col)
+
+        p = fit_map[col, row]
+
+        plots.append(p.opts({
+            'Scatter': dict(alpha=alpha),
+            'Curve': dict(alpha=alpha),
+        }))
+
+    return hv.Overlay(plots)
 
 ######################
 # Standards plotting
@@ -381,6 +523,8 @@ def plot_PBP(
     P_is,
     RFUs,
     popt,
+    row = None,
+    col = None,
 ):
     """Plot a PBP isotherm fit given data (P_is, RFUs) and popt from
     htmek.assays.standards.fit_PBP.
@@ -388,16 +532,20 @@ def plot_PBP(
     xs = np.linspace(0, np.max(P_is)*1.1, 1000)
 
     p_data = hv.Scatter(
-        (P_is, RFUs),
+        (P_is, RFUs, row, col),
         kdims = '[Pi] (µM)',
-        vdims = 'RFU',
+        vdims = ['RFU', 'mark_row', 'mark_col'],
     )
 
-    p_fit = hv.Curve(
-        (xs, PBP_isotherm(xs, *popt)),
-        kdims = '[Pi] (µM)',
-        vdims = 'RFU',
-    )
+    if 'Failed' not in popt:
+        p_fit = hv.Curve(
+            (xs, PBP_isotherm(xs, *popt), row, col),
+            kdims = '[Pi] (µM)',
+            vdims = ['RFU', 'mark_row', 'mark_col'],
+        )
+        p = p_fit*p_data
+    else:
+        p = p_data
 
     return p_fit*p_data
 
@@ -408,6 +556,7 @@ def PBP_map(
     col: str = 'mark_col',
     x: str = '[Pi] (µM)',
     y: str = 'roi',
+    fit_dict: None | dict = None,
 ):
     """Creates a hv.DynamicMap to display PBP fits across all chambers.
 
@@ -427,6 +576,10 @@ def PBP_map(
     y :
         Name of the y axis (fluorescence signal). Defaults to 'roi', but
         is plotted as RFU by viz.plot_PBP.
+    fit_dict :
+        Optionally add a dictionary of fit popt/pcovs. This function is
+        generally very fast to compute and plot, but in some instances
+        a dictionary lookup will be noticably faster.
     
     Returns
     -------
@@ -438,10 +591,13 @@ def PBP_map(
         sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
 
         P_is, RFUs = sub_df[x].values, sub_df[y].values
-        popt, pcov = fit_PBP(P_is, RFUs)
+        if fit_dict is None:
+            popt, pcov = fit_PBP(P_is, RFUs)
+        else:
+            popt, pcov = fit_dict[mark_row, mark_col]
         ylim = (0, df[y].max())
 
-        return plot_PBP(P_is, RFUs, popt).opts(ylim=ylim)
+        return plot_PBP(P_is, RFUs, popt, mark_row, mark_col).opts(ylim=ylim)
 
     mark_col = hv.Dimension('column', values=range(32))
     mark_row = hv.Dimension('row', values=range(56))
@@ -474,7 +630,7 @@ def plot_sample_progress_curves(assays_df):
         if not np.isnan(plotting_dat.A.iloc[0]):
             xlin = np.arange(0,2000,1)
             A, k, y0 = plotting_dat.A.iloc[0], plotting_dat.k.iloc[0], plotting_dat.y0.iloc[0],
-            ax.plot(xlin, htmek.assays.kinetics.single_exponential(xlin,A,k,y0))
+            ax.plot(xlin, single_exponential(xlin,A,k,y0))
 
         mutantID = plotting_dat['tag'].iloc[0]
 
@@ -507,7 +663,7 @@ def compare_sample_progress_curves_vs_MM(expression_df, assays_df):
         y0 = sub_dat['y0'].iloc[0]
         
         axs[0].scatter(times, product_concs, alpha=0.5, color=substrate_colors[s])
-        axs[0].plot(times, htmek.assays.kinetics.single_exponential(times, A, k, y0), label=f"[S] = {s} µM", color=substrate_colors[s])
+        axs[0].plot(times, single_exponential(times, A, k, y0), label=f"[S] = {s} µM", color=substrate_colors[s])
 
     axs[0].set_ylabel("[Product] (uM)")
     axs[0].set_xlabel("Time (s)")
@@ -520,7 +676,7 @@ def compare_sample_progress_curves_vs_MM(expression_df, assays_df):
     xlin = np.arange(0, max(substrate_colors), 1)
 
     axs[1].scatter(dat['substrate_conc'], dat['init_rate'], alpha=0.5, color=[substrate_colors[s] for s in dat['substrate_conc']])
-    axs[1].plot(xlin, htmek.assays.kinetics.michaelis_menten(xlin, vmax, KM), label=f"KM = {KM:.2f}\nvmax = {vmax:.3f}")
+    axs[1].plot(xlin, michaelis_menten(xlin, vmax, KM), label=f"KM = {KM:.2f}\nvmax = {vmax:.3f}")
     axs[1].set_ylabel("Initial Rate")
     axs[1].set_xlabel("[Substrate] (uM)")
     axs[1].legend()

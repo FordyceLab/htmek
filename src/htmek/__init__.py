@@ -1,4 +1,4 @@
-from . import utils, viz, process
+from . import utils, viz, process, assays
 
 from .expression.buttons import buttons_pipe
 from .expression.lagoons import lagoons_pipe
