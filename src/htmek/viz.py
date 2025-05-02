@@ -381,8 +381,8 @@ def plot_fit(
     popt,
     x_label = 'x',
     y_label = 'y',
-    row = 'mark_row',
-    col = 'mark_col',
+    row = None,
+    col = None,
     hover_tools = [],
     failed = 'Failed',
 ):
@@ -394,14 +394,14 @@ def plot_fit(
     p_data = hv.Scatter(
         (xs, ys, row, col),
         kdims = x_label,
-        vdims = [y_label, row, col],
+        vdims = [y_label, 'row', 'col'],
     )
 
     if failed not in popt:
         p_fit = hv.Curve(
             (xs_full, model(xs_full, *popt), row, col),
             kdims = x_label,
-            vdims = [y_label, row, col],
+            vdims = [y_label, 'row', 'col'],
         )
         p = p_fit*p_data
     else:
@@ -472,8 +472,8 @@ def fit_map(
             popt,
             x,
             y,
-            row,
-            col,
+            mark_row,
+            mark_col,
         ).opts(ylim=ylim)
 
         return p
@@ -491,7 +491,8 @@ def sample_fit_map(
     n: int = 100,
     row: str = 'mark_row',
     col: str = 'mark_col',
-    alpha: float = 0.1,
+    point_alpha: float = 0.3,
+    line_alpha: float = 0.1,
 ) -> hv.Overlay:
     """Samples a fit_map to show a sample of the data"""
     plots = []
@@ -509,8 +510,12 @@ def sample_fit_map(
         p = fit_map[col, row]
 
         plots.append(p.opts({
-            'Scatter': dict(alpha=alpha),
-            'Curve': dict(alpha=alpha),
+            'Scatter': dict(
+                color='#1f77b4',
+                line_alpha=point_alpha,
+                fill_alpha=point_alpha,
+            ),
+            'Curve': dict(alpha=line_alpha),
         }))
 
     return hv.Overlay(plots)
