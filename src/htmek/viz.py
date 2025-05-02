@@ -383,8 +383,7 @@ def plot_fit(
     y_label = 'y',
     row = None,
     col = None,
-    hover_tools = [],
-    failed = 'Failed',
+    tag = None,
 ):
     """Plot a fit given data (xs, ys), model for data, and popt from
     a previous fit.
@@ -392,22 +391,27 @@ def plot_fit(
     xs_full = np.linspace(0, np.max(xs)*1.1, 1000)
 
     p_data = hv.Scatter(
-        (xs, ys, row, col),
+        (xs, ys, row, col, tag),
         kdims = x_label,
-        vdims = [y_label, 'row', 'col'],
+        vdims = [y_label, 'row', 'col', 'tag'],
     )
 
-    if failed not in popt:
+    if not np.isnan(np.sum(popt)):
         p_fit = hv.Curve(
-            (xs_full, model(xs_full, *popt), row, col),
+            (xs_full, model(xs_full, *popt), row, col, tag),
             kdims = x_label,
-            vdims = [y_label, 'row', 'col'],
+            vdims = [y_label, 'row', 'col', 'tag'],
         )
         p = p_fit*p_data
     else:
-        p = p_data
+        # Need to add empty plot or else it won't show in DynamicMap
+        # with other overlay plots.
+        p_empty = hv.Curve(
+            (np.min(xs), np.min(ys))
+        )
+        p = p_data*p_empty
 
-    return p_fit*p_data
+    return p
 
 
 def fit_map(
@@ -417,6 +421,7 @@ def fit_map(
     y: str,
     row: str = 'mark_row',
     col: str = 'mark_col',
+    tag: str = 'tag',
     fit_dict: None | dict = None,
 ):
     """Creates a hv.DynamicMap to display fits across all chambers.
@@ -438,10 +443,12 @@ def fit_map(
         Name of the y axis (e.g., fluorescence signal).
     row :
         Name of df column containing row information ('mark_row' from
-        magnify.
+        magnify).
     col :
         Name of df column containing column information ('mark_col' from
-        magnify.
+        magnify).
+    tag :
+        Name of df column containing tag information ('tag' from magnify).
     fit_dict :
         Optionally add a dictionary of fit popt/pcovs. This function is
         generally very fast to compute and plot, but in some instances
@@ -457,6 +464,8 @@ def fit_map(
         sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
 
         xs, ys = sub_df[x].values, sub_df[y].values
+        tag_value = sub_df[tag].values[0]
+
         if fit_dict is None:
             fit_func = func
             popt, pcov, model = fit_func(xs, ys)
@@ -474,14 +483,15 @@ def fit_map(
             y,
             mark_row,
             mark_col,
+            tag_value,
         ).opts(ylim=ylim)
 
         return p
 
-    mark_col = hv.Dimension('column', values=range(32))
-    mark_row = hv.Dimension('row', values=range(56))
+    col_dim = hv.Dimension('column', values=range(32))
+    row_dim = hv.Dimension('row', values=range(56))
 
-    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
+    dmap = hv.DynamicMap(fit, kdims=[col_dim, row_dim])
 
     return dmap
 
