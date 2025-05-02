@@ -4,6 +4,8 @@ import holoviews as hv
 from holoviews.operation.datashader import rasterize
 hv.extension('bokeh')
 
+import random
+
 import matplotlib.pyplot as plt
 
 import magnify
@@ -381,12 +383,14 @@ def plot_fit(
     popt,
     x_label = 'x',
     y_label = 'y',
-    row = None,
     col = None,
+    row = None,
     tag = None,
 ):
     """Plot a fit given data (xs, ys), model for data, and popt from
     a previous fit.
+
+    TODO: Write a better docstring...
     """
     xs_full = np.linspace(0, np.max(xs)*1.1, 1000)
 
@@ -419,8 +423,9 @@ def fit_map(
     func,
     x: str,
     y: str,
-    row: str = 'mark_row',
+    z: None | str = None,
     col: str = 'mark_col',
+    row: str = 'mark_row',
     tag: str = 'tag',
     fit_dict: None | dict = None,
 ):
@@ -441,11 +446,13 @@ def fit_map(
         Name of the x axis (e.g., standard concentration).
     y :
         Name of the y axis (e.g., fluorescence signal).
-    row :
-        Name of df column containing row information ('mark_row' from
-        magnify).
+    z :
+        Optional extra dimension (e.g., time, [substrate]).
     col :
         Name of df column containing column information ('mark_col' from
+        magnify).
+    row :
+        Name of df column containing row information ('mark_row' from
         magnify).
     tag :
         Name of df column containing tag information ('tag' from magnify).
@@ -458,10 +465,26 @@ def fit_map(
     -------
     dmap :
         hv.DynamicMap of fits for all chambers.
-    
     """
-    def fit(mark_col, mark_row):
-        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
+    cols = df[col].unique()
+    rows = df[row].unique()
+
+    indexers = [col, row]
+    if z is not None:
+        zs = df[z].unique()
+        indexers.append(z)
+
+    indexed_df = df.set_index(indexers).sort_index().copy()
+
+    def fit(*args):
+        # Decide if doing two or three dimensions
+        if len(args) == 2:
+            col_val, row_val = args
+        else:
+            col_val, row_val, z_val = args
+        
+        # Subset dataframe
+        sub_df = indexed_df.loc[*args].copy()
 
         xs, ys = sub_df[x].values, sub_df[y].values
         tag_value = sub_df[tag].values[0]
@@ -470,7 +493,7 @@ def fit_map(
             fit_func = func
             popt, pcov, model = fit_func(xs, ys)
         else:
-            popt, pcov = fit_dict[mark_row, mark_col]
+            popt, pcov = fit_dict[row_val, col_val]
             model = func
         ylim = (0, df[y].max())
 
@@ -481,17 +504,22 @@ def fit_map(
             popt,
             x,
             y,
-            mark_row,
-            mark_col,
+            col_val,
+            row_val,
             tag_value,
         ).opts(ylim=ylim)
 
         return p
 
-    col_dim = hv.Dimension('column', values=range(32))
-    row_dim = hv.Dimension('row', values=range(56))
+    col_dim = hv.Dimension('column', values=cols)
+    row_dim = hv.Dimension('row', values=rows)
+    kdims = [col_dim, row_dim]
 
-    dmap = hv.DynamicMap(fit, kdims=[col_dim, row_dim])
+    if z is not None:
+        z_dim = hv.Dimension(z, values=zs)
+        kdims.append(z_dim)
+
+    dmap = hv.DynamicMap(fit, kdims=kdims)
 
     return dmap
 
@@ -499,25 +527,43 @@ def fit_map(
 def sample_fit_map(
     fit_map: hv.DynamicMap,
     n: int = 100,
-    row: str = 'mark_row',
     col: str = 'mark_col',
+    row: str = 'mark_row',
+    z = None,
     point_alpha: float = 0.3,
     line_alpha: float = 0.1,
 ) -> hv.Overlay:
     """Samples a fit_map to show a sample of the data"""
     plots = []
 
-    sample = np.random.choice(
-        [f'{row}_{col}' for row in range(56) for col in range(32)],
-        size = n,
-        replace = False,
-    )
+    # Get random sample
+    kdims = fit_map.kdims
 
-    for chamber in sample:
-        row, col = chamber.split('_')
-        row, col = int(row), int(col)
+    if len(kdims) > 2:
+        if z is not None:
+            if z not in kdims[2].values:
+                raise ValueError(
+                    f'z arg `{z}` not found in kdim `{kdims[2]}`.'
+                )
+        combos = [
+            (i, j, k)
+            for i in kdims[0].values
+            for j in kdims[1].values
+            for k in kdims[2].values
+        ]
+    else:
+        combos = [
+            (i, j)
+            for i in kdims[0].values
+            for j in kdims[1].values
+        ]
 
-        p = fit_map[col, row]
+    sample = random.sample(combos, k=n)
+
+    # Select and overlay sampled plots
+    for args in sample:
+
+        p = fit_map[*args]
 
         plots.append(p.opts({
             'Scatter': dict(
