@@ -540,22 +540,25 @@ def sample_fit_map(
     kdims = fit_map.kdims
 
     if len(kdims) > 2:
+        z_vals = kdims[2].values
         if z is not None:
             if z not in kdims[2].values:
                 raise ValueError(
                     f'z arg `{z}` not found in kdim `{kdims[2]}`.'
                 )
+            z_vals = [z]
+
         combos = [
-            (i, j, k)
-            for i in kdims[0].values
-            for j in kdims[1].values
-            for k in kdims[2].values
+            (col_val, row_val, z_val)
+            for col_val in kdims[0].values
+            for row_val in kdims[1].values
+            for z_val in z_vals
         ]
     else:
         combos = [
-            (i, j)
-            for i in kdims[0].values
-            for j in kdims[1].values
+            (col_val, row_val)
+            for col_val in kdims[0].values
+            for row_val in kdims[1].values
         ]
 
     sample = random.sample(combos, k=n)
