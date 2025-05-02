@@ -459,11 +459,11 @@ def plot_sample_progress_curves(assays_df):
     plt.legend(title='Variant', bbox_to_anchor=(1,1), loc="upper left")
     plt.show()
 
-def compare_sample_progress_curves_vs_MM(expression_df, assays_df):
+def compare_sample_progress_curves_vs_MM(expression_df, assays_df, row=None, col=None):
     fig, axs = plt.subplots(1, 2, figsize=(7, 4))
 
-    row, col = expression_df[(expression_df['tag'] == 'Y11F')][['mark_row', 'mark_col']].iloc[0]
-    row, col = np.random.randint(56), np.random.randint(32)
+    if (row is None) and (col is None):
+        row, col = np.random.randint(56), np.random.randint(32)
 
     dat = assays_df[(assays_df['mark_col'] == col) & (assays_df['mark_row'] == row)]
 
@@ -516,7 +516,7 @@ def plot_kcat_KM_by_sequence_boxplot(assays_df):
         plot.handles['x_range'].factors = [str(value) for value in range(1,99)]
 
     # Create a Holoviews boxplot
-    boxplot = hv.BoxWhisker(dat, kdims=['tag'], vdims=['log_kcat_over_KM', 'library'], label='kcat/KM Boxplot')
+    boxplot = hv.BoxWhisker(dat, kdims=['tag'], vdims=['log_kcat_over_KM'], label='kcat/KM Boxplot')
     boxplot.opts(
         width=1200,
         height=400,
