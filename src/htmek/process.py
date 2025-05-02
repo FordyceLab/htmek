@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
+import holoviews as hv
+
+from .assays.standards import fit_PBP
+from .viz import fit_map
 
 
 def to_df(
@@ -67,3 +71,77 @@ def to_df(
     df = df.to_dataframe().reset_index()
 
     return df
+
+
+def standards(
+    df: pd.DataFrame,
+    fit_func = fit_PBP,
+    x_label: str = 'standard_conc',
+    y_label: str =  'median_intensity',
+    row: str = 'mark_row',
+    col: str = 'mark_col',
+) -> dict | hv.DynamicMap:
+    """Processes a standards_df to fit parameters.
+
+    Parameters
+    ----------
+    df :
+        A standards dataframe that contains per-chamber RFU values for
+        different substrate concentrations.
+    fit_func :
+        The function used to fit the data, usually a wrapper around the
+        curve_fit function. Must return pcov, popt, and model
+        (the function used to model the data).
+    x_label :
+        Name of the column containing substrate concentrations (x-axis).
+    y_label :
+        Name of the column containing the RFU values (y-axis).
+    row :
+        Name of the column for chamber row information.
+    col :
+        Name of the column for chamber column information.
+
+    Returns
+    -------
+    fit_dict :
+        Dictionary containing fits.
+    p_fit_map :
+        DynamicMap of the fits. Can be used for downstream plotting.
+    
+    TODO: Add option for global intial fit of KD and PS, which should be
+    the same for the full chip? A and I_0 are the parameters that really
+    should change.
+    """
+    fit_dict = {}
+    for chamber, sub_df in df.groupby(['mark_row', 'mark_col']):
+        xs, ys = sub_df[x_label].values, sub_df[y_label].values
+
+        # Try fit with error catching
+        try:
+            out = fit_func(xs, ys)
+
+            # Make sure the fit_func parameter outputs the right thing.
+            try:
+                popt, pcov, model = out
+            except ValueError:
+                raise ValueError(
+                    'Parameter `fit` must return three args, popt, pcov, and ' 'the function used to model the data.'
+                )
+
+            # Store fit
+            fit_dict[chamber] = popt, pcov
+        
+        # Store error in dict
+        except (ValueError, RuntimeError) as e:
+            fit_dict[chamber] = f'Failed: {e}'
+
+    # Make the fit map
+    p_fit_map = fit_map(
+        df,
+        model,
+        x_label,
+        y_label,
+        fit_dict = fit_dict,
+    )
+
+    return fit_dict, p_fit_map
