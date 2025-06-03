@@ -13,7 +13,7 @@ import xarray as xr
 
 from .assays.kinetics import single_exponential, michaelis_menten
 from .assays.standards import PBP_isotherm, fit_PBP
-from .process import to_df
+from .utils import to_df
 
 ######################
 # Default opts
@@ -373,6 +373,21 @@ def chamber_map(
 
     return dmap
 
+def plot_correlation(
+    df,
+    x_axis: str,
+    y_axis: str,
+    replicate_col: str,
+    compare: None | list = None,
+):
+    """"""
+    pass
+    # TODO:
+    # Needs to pivot df based on a column that has replicates
+    # Compare arg will specify which two to compare (if more than 2)
+    # Colormapping for more than 2 also?
+
+
 #########################
 # General fitting
 #########################
@@ -395,16 +410,16 @@ def plot_fit(
     xs_full = np.linspace(0, np.max(xs)*1.1, 1000)
 
     p_data = hv.Scatter(
-        (xs, ys, row, col, tag),
+        (xs, ys, col, row, tag),
         kdims = x_label,
-        vdims = [y_label, 'row', 'col', 'tag'],
+        vdims = [y_label, 'col', 'row', 'tag'],
     )
 
     if not np.isnan(np.sum(popt)):
         p_fit = hv.Curve(
-            (xs_full, model(xs_full, *popt), row, col, tag),
+            (xs_full, model(xs_full, *popt), col, row, tag),
             kdims = x_label,
-            vdims = [y_label, 'row', 'col', 'tag'],
+            vdims = [y_label, 'col', 'row', 'tag'],
         )
         p = p_fit*p_data
     else:
@@ -493,7 +508,7 @@ def fit_map(
             fit_func = func
             popt, pcov, model = fit_func(xs, ys)
         else:
-            popt, pcov = fit_dict[row_val, col_val]
+            popt, pcov = fit_dict[*args]
             model = func
         ylim = (0, df[y].max())
 
@@ -579,96 +594,7 @@ def sample_fit_map(
 
     return hv.Overlay(plots)
 
-######################
-# Standards plotting
-######################
 
-def plot_PBP(
-    P_is,
-    RFUs,
-    popt,
-    row = None,
-    col = None,
-):
-    """Plot a PBP isotherm fit given data (P_is, RFUs) and popt from
-    htmek.assays.standards.fit_PBP.
-    """
-    xs = np.linspace(0, np.max(P_is)*1.1, 1000)
-
-    p_data = hv.Scatter(
-        (P_is, RFUs, row, col),
-        kdims = '[Pi] (µM)',
-        vdims = ['RFU', 'mark_row', 'mark_col'],
-    )
-
-    if 'Failed' not in popt:
-        p_fit = hv.Curve(
-            (xs, PBP_isotherm(xs, *popt), row, col),
-            kdims = '[Pi] (µM)',
-            vdims = ['RFU', 'mark_row', 'mark_col'],
-        )
-        p = p_fit*p_data
-    else:
-        p = p_data
-
-    return p_fit*p_data
-
-
-def PBP_map(
-    df: pd.DataFrame,
-    row: str = 'mark_row',
-    col: str = 'mark_col',
-    x: str = '[Pi] (µM)',
-    y: str = 'roi',
-    fit_dict: None | dict = None,
-):
-    """Creates a hv.DynamicMap to display PBP fits across all chambers.
-
-    Parameters
-    ----------
-    df :
-        A tidy pandas DataFrame containing PBP fluorescence data (y) across
-        multiple concentrations (x) for all chambers (mark_row, mark_col).
-    row :
-        Name of df column containing row information ('mark_row' from
-        magnify.
-    col :
-        Name of df column containing column information ('mark_col' from
-        magnify.
-    x :
-        Name of the x axis (standard concentration). Defaults to '[Pi] (µM)'.
-    y :
-        Name of the y axis (fluorescence signal). Defaults to 'roi', but
-        is plotted as RFU by viz.plot_PBP.
-    fit_dict :
-        Optionally add a dictionary of fit popt/pcovs. This function is
-        generally very fast to compute and plot, but in some instances
-        a dictionary lookup will be noticably faster.
-    
-    Returns
-    -------
-    dmap :
-        hv.DynamicMap of PBP fits for all chambers.
-    
-    """
-    def fit(mark_col, mark_row):
-        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
-
-        P_is, RFUs = sub_df[x].values, sub_df[y].values
-        if fit_dict is None:
-            popt, pcov = fit_PBP(P_is, RFUs)
-        else:
-            popt, pcov = fit_dict[mark_row, mark_col]
-        ylim = (0, df[y].max())
-
-        return plot_PBP(P_is, RFUs, popt, mark_row, mark_col).opts(ylim=ylim)
-
-    mark_col = hv.Dimension('column', values=range(32))
-    mark_row = hv.Dimension('row', values=range(56))
-
-    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
-
-    return dmap
 
 def plot_all_std_curves(standards_df):
     ax = plt.subplot()

@@ -17,6 +17,7 @@ def standards_pipe(
     blank='BLANK',
     post_hflip=True,
     pre_hflip=False,
+    basic_correct=False,
     pipes=None,
     return_pipe=False,
     **kwargs,
@@ -61,6 +62,8 @@ def standards_pipe(
         pipe.add_pipe("horizontal_flip", after="stitch")
     if pre_hflip:
         pipe.add_pipe("horizontal_flip", before="stitch")
+    if basic_correct:
+        pipe.add_pipe("basic_correct", before="stitch")
 
     if return_pipe:
         return pipe
@@ -131,13 +134,17 @@ def fit_PBP(
         used directly and unambiguously to plot the result of the fit
         that used this function.
     """
-    popt, pcov = curve_fit(
-        PBP_isotherm,
-        P_is,
-        RFUs,
-        p0 = [40, 1, 50, 500],
-        bounds = ([0]*4, [np.inf]*4),
-    )
+    try:
+        popt, pcov = curve_fit(
+            PBP_isotherm,
+            P_is,
+            RFUs,
+            p0 = [40, 1, 50, 500],
+            bounds = ([0]*4, [np.inf]*4),
+        )
+    except (ValueError, RuntimeError):
+        popt = np.empty(4)*np.nan
+        pcov = np.empty((4,4))*np.nan
 
     return popt, pcov, PBP_isotherm
 

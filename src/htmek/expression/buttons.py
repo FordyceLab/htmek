@@ -34,7 +34,7 @@ def buttons_pipe(
         min_button_diameter=20, # new 20
         max_button_diameter=32, # new 30
         chamber_diameter=75,
-        min_roundness=0.20,
+        min_roundness=0.10,
         roi_length=None,
         **kwargs,
     )
