@@ -3,7 +3,9 @@ import pandas as pd
 import holoviews as hv
 from holoviews.operation.datashader import rasterize
 hv.extension('bokeh')
+import bokeh.io
 import colorcet as cc
+import os
 
 import random
 
@@ -66,6 +68,27 @@ hv_defaults = (
 
 hv.opts.defaults(*hv_defaults)
 
+######################
+# Saving svgs
+######################
+def export_svg(plot, filename):
+
+    # Check if multiple plots:
+    if isinstance(plot, hv.Layout):
+        print('Detected Layout; saving each subplot in new folder.')
+        dir_name = filename.replace('.svg', '')
+        os.makedirs(dir_name, exist_ok=True)
+        filenames = [f'{dir_name}/subplot_{i+1}.svg' for i in range(len(plot))]
+        plots = plot
+
+    else:
+        plots = [plot]
+        filenames = [filename]
+
+    for plot, filename in zip(plots, filenames):
+        plot_state = hv.renderer('bokeh').get_plot(plot).state
+        plot_state.output_backend = 'svg'
+        bokeh.io.export_svgs(plot_state, filename=filename)
 
 ######################
 # General plotting
