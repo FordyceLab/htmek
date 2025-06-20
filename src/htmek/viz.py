@@ -3,6 +3,7 @@ import pandas as pd
 import holoviews as hv
 from holoviews.operation.datashader import rasterize
 hv.extension('bokeh')
+import colorcet as cc
 
 import random
 
@@ -119,6 +120,7 @@ def view(
     imscale: float = None,
     limits: None | tuple[int, int] = None,
     chamber_mask: float = True,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.Image:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -141,6 +143,8 @@ def view(
         A tuple of ints for intensity limits.
     chamber_mask :
         Only relevant if chamber is not None. Shows the mask over it.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
 
     Returns
     -------
@@ -217,6 +221,7 @@ def view(
             ylabel='',
             colorbar=True,
             colorbar_opts=dict(title='intensity'),
+            cmap=cmap,
         )
 
         if rastered:
@@ -246,6 +251,7 @@ def chip_hm(
     xy: list[str, str] = ['mark_col', 'mark_row'],
     attrs: str | list[str] = ['tag'],
     scale=1,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.HeatMap:
     """Plot a heatmap of a chip's value of interest from identified
     regions of interest.
@@ -271,6 +277,8 @@ def chip_hm(
         to 'tag' to provide pinlist information.
     scale :
         Arbitrary size of the rendered heatmap. Default 1.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
     """
 
     if isinstance(data, xr.Dataset):
@@ -289,6 +297,7 @@ def chip_hm(
         frame_height=int(150*3.25*scale),
         colorbar=True,
         colorbar_opts=dict(title=value),
+        cmap=cmap,
     )
 
     return p
@@ -300,6 +309,7 @@ def chamber_map(
     limits: None | tuple[int, int] = None,
     chamber_mask: bool = True,
     time_dim: None | str = None,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.DynamicMap:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -317,6 +327,8 @@ def chamber_map(
         Whether to show the mask over the chamber.
     time_dim :
         The name of the dimension that indicates the time.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
 
     Returns
     -------
@@ -343,6 +355,7 @@ def chamber_map(
                 imscale = imscale,
                 limits = limits,
                 chamber_mask = chamber_mask,
+                cmap = cmap
             )
 
             return p
@@ -359,6 +372,7 @@ def chamber_map(
                 imscale = imscale,
                 limits = limits,
                 chamber_mask = chamber_mask,
+                cmap = cmap
             )
 
             return p
@@ -594,6 +608,56 @@ def sample_fit_map(
 
     return hv.Overlay(plots)
 
+
+def column_plot(
+    df,
+    value: str,
+    col: str = 'mark_col',
+    row: str = 'mark_row',
+    tag: str = 'tag',
+    blank: str | None = '',
+    wildtype: str | None = 'WT',
+    negative: str | None = None,
+    cmap = {
+        'default': '#3E94FA',
+        'blank': '#DEDEDE',
+        'negative': '#E18409',
+        'wildtype': '#8DED81'
+    },
+    ylim = None,
+) -> hv.Scatter:
+    """Makes a plot of all chambers down each column, so local background
+    effects can be visualized. Optionally colors special chambers
+    (e.g., blanks, WT, negative controls) for more context. Colors
+    determined by cmap argument given as dictionary.
+    """
+    # Set up default colormap (all tags as blue)
+    cmap = {k: cmap['default'] for k in df_fit[tag].unique()}
+
+    # Update special tags
+    for k in [blank, wildtype, negative]:
+        if k is not None:
+            cmap[k] = cmap[f'{k}']
+
+    # Plot
+    p = hv.Scatter(
+        df,
+        row,
+        [value, col, tag]
+    ).groupby(
+        col
+    ).opts(
+        ylim=ylim,
+        color=tag,
+        cmap=cmap,
+        show_legend=False,
+        frame_width=600,
+        frame_height=250,
+        size=8,
+        logy=True,
+    )
+
+    return p
 
 
 def plot_all_std_curves(standards_df):
