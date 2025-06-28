@@ -1,6 +1,3 @@
-import htmek
-import htmek.assays.standards
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -8,10 +5,14 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import curve_fit
 
+from numpy.typing import ArrayLike
+
 from pandarallel import pandarallel
 pandarallel.initialize(progress_bar=True)
 
 import magnify
+
+from .standards import compute_PBP_product, PBP_isotherm
 
 
 def kinetics_pipe(
@@ -78,6 +79,77 @@ def kinetics_pipe(
 
     return chip
 
+def exponential(
+    t: float | ArrayLike,
+    A: float,
+    k: float,
+    y0: float,
+) -> float | ArrayLike:
+    """Exponential fit for progress curve.
+
+    Parameters
+    ----------
+    t : float or np.array
+        Time(s).
+    A : float
+        Maximum change in signal.
+    k : float
+        Rate of change of signal over time.
+    y0 : float
+        Intercept.
+
+    Returns
+    -------
+    float or np.array
+        Predicted value at time t.
+    """
+    return A*(1-np.exp(-k*t))+y0
+
+def fit_RFU_progress(
+    ts: ArrayLike,
+    RFUs: ArrayLike,
+):
+    """Curve fit RFU progress curve with intial guesses and bounds.
+
+    This function is prescribed – it uses known best-guess parameters
+    and physical bounds for fitting timecourse data.
+    
+    NOTE: This function returns the fitting function.
+
+    Parameters
+    ----------
+    ts : np.array
+        Array of times.
+    RFUs : np.array
+        Array of RFUs.
+
+    Returns
+    -------
+    popt : np.array
+        The optimal values for parameters A, k, and y0.
+    pcov : np.array
+        The covariance matrix for parameter fits. To convert to standard
+        deviation, run `np.sqrt(np.diag(pcov))`.
+    exponential : callable
+        The function used within curve fit. Returned so that it can be
+        used directly and unambiguously to plot the result of the fit
+        that used this function.
+    """
+    try:
+        popt, pcov = curve_fit(
+            exponential,
+            ts,
+            RFUs,
+            p0 = [np.max(RFUs), 0.01, np.min(RFUs)],
+            bounds = ([0, 0, 0], [np.inf, np.inf, np.inf]),
+        )
+    except (ValueError, RuntimeError):
+        popt = np.empty(3)*np.nan
+        pcov = np.empty((3,3))*np.nan
+
+    return popt, pcov, exponential
+
+
 def get_product_conc_PBP(x, standards_df, pbp_conc=None, cutoff=None):
     RFU = x['median_intensity']
     col = x['mark_col']
@@ -89,13 +161,13 @@ def get_product_conc_PBP(x, standards_df, pbp_conc=None, cutoff=None):
 
     if not standard_rows.empty:
         popt = standard_rows[['A', 'KD', 'PS',	'I_0uMP_i']].iloc[0].values
-        product_conc = htmek.assays.standards.compute_PBP_product(RFU, popt)
+        product_conc = compute_PBP_product(RFU, popt)
 
         if cutoff == None:
             cutoff = pbp_conc * (2/3)
 
         # If RFU above 50uM Pi RFU, set a flag
-        if RFU > htmek.assays.standards.PBP_isotherm(cutoff, *popt):
+        if RFU > PBP_isotherm(cutoff, *popt):
             exceeds_PBP_cutoff = True
 
         return round(float(product_conc), 2), exceeds_PBP_cutoff

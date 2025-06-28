@@ -3,6 +3,11 @@ import pandas as pd
 import holoviews as hv
 from holoviews.operation.datashader import rasterize
 hv.extension('bokeh')
+import bokeh.io
+import colorcet as cc
+import os
+
+import random
 
 import matplotlib.pyplot as plt
 
@@ -11,7 +16,7 @@ import xarray as xr
 
 from .assays.kinetics import single_exponential, michaelis_menten
 from .assays.standards import PBP_isotherm, fit_PBP
-from .process import to_df
+from .utils import to_df
 
 ######################
 # Default opts
@@ -63,6 +68,27 @@ hv_defaults = (
 
 hv.opts.defaults(*hv_defaults)
 
+######################
+# Saving svgs
+######################
+def export_svg(plot, filename):
+
+    # Check if multiple plots:
+    if isinstance(plot, hv.Layout):
+        print('Detected Layout; saving each subplot in new folder.')
+        dir_name = filename.replace('.svg', '')
+        os.makedirs(dir_name, exist_ok=True)
+        filenames = [f'{dir_name}/subplot_{i+1}.svg' for i in range(len(plot))]
+        plots = plot
+
+    else:
+        plots = [plot]
+        filenames = [filename]
+
+    for plot, filename in zip(plots, filenames):
+        plot_state = hv.renderer('bokeh').get_plot(plot).state
+        plot_state.output_backend = 'svg'
+        bokeh.io.export_svgs(plot_state, filename=filename)
 
 ######################
 # General plotting
@@ -117,6 +143,7 @@ def view(
     imscale: float = None,
     limits: None | tuple[int, int] = None,
     chamber_mask: float = True,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.Image:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -139,6 +166,8 @@ def view(
         A tuple of ints for intensity limits.
     chamber_mask :
         Only relevant if chamber is not None. Shows the mask over it.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
 
     Returns
     -------
@@ -215,6 +244,7 @@ def view(
             ylabel='',
             colorbar=True,
             colorbar_opts=dict(title='intensity'),
+            cmap=cmap,
         )
 
         if rastered:
@@ -244,6 +274,7 @@ def chip_hm(
     xy: list[str, str] = ['mark_col', 'mark_row'],
     attrs: str | list[str] = ['tag'],
     scale=1,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.HeatMap:
     """Plot a heatmap of a chip's value of interest from identified
     regions of interest.
@@ -269,6 +300,8 @@ def chip_hm(
         to 'tag' to provide pinlist information.
     scale :
         Arbitrary size of the rendered heatmap. Default 1.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
     """
 
     if isinstance(data, xr.Dataset):
@@ -287,6 +320,7 @@ def chip_hm(
         frame_height=int(150*3.25*scale),
         colorbar=True,
         colorbar_opts=dict(title=value),
+        cmap=cmap,
     )
 
     return p
@@ -298,6 +332,7 @@ def chamber_map(
     limits: None | tuple[int, int] = None,
     chamber_mask: bool = True,
     time_dim: None | str = None,
+    cmap: str | list = cc.kbc[::-1],
 ) -> hv.DynamicMap:
     """Plot an image of the full chip or a chamber from the chip object.
     
@@ -315,6 +350,8 @@ def chamber_map(
         Whether to show the mask over the chamber.
     time_dim :
         The name of the dimension that indicates the time.
+    cmap :
+        The colormap. Defaults to kbc_r (holoviews default).
 
     Returns
     -------
@@ -341,6 +378,7 @@ def chamber_map(
                 imscale = imscale,
                 limits = limits,
                 chamber_mask = chamber_mask,
+                cmap = cmap
             )
 
             return p
@@ -357,6 +395,7 @@ def chamber_map(
                 imscale = imscale,
                 limits = limits,
                 chamber_mask = chamber_mask,
+                cmap = cmap
             )
 
             return p
@@ -371,6 +410,21 @@ def chamber_map(
 
     return dmap
 
+def plot_correlation(
+    df,
+    x_axis: str,
+    y_axis: str,
+    replicate_col: str,
+    compare: None | list = None,
+):
+    """"""
+    pass
+    # TODO:
+    # Needs to pivot df based on a column that has replicates
+    # Compare arg will specify which two to compare (if more than 2)
+    # Colormapping for more than 2 also?
+
+
 #########################
 # General fitting
 #########################
@@ -381,33 +435,39 @@ def plot_fit(
     popt,
     x_label = 'x',
     y_label = 'y',
-    row = None,
     col = None,
-    hover_tools = [],
-    failed = 'Failed',
+    row = None,
+    tag = None,
 ):
     """Plot a fit given data (xs, ys), model for data, and popt from
     a previous fit.
+
+    TODO: Write a better docstring...
     """
     xs_full = np.linspace(0, np.max(xs)*1.1, 1000)
 
     p_data = hv.Scatter(
-        (xs, ys, row, col),
+        (xs, ys, col, row, tag),
         kdims = x_label,
-        vdims = [y_label, 'row', 'col'],
+        vdims = [y_label, 'col', 'row', 'tag'],
     )
 
-    if failed not in popt:
+    if not np.isnan(np.sum(popt)):
         p_fit = hv.Curve(
-            (xs_full, model(xs_full, *popt), row, col),
+            (xs_full, model(xs_full, *popt), col, row, tag),
             kdims = x_label,
-            vdims = [y_label, 'row', 'col'],
+            vdims = [y_label, 'col', 'row', 'tag'],
         )
         p = p_fit*p_data
     else:
-        p = p_data
+        # Need to add empty plot or else it won't show in DynamicMap
+        # with other overlay plots.
+        p_empty = hv.Curve(
+            (np.min(xs), np.min(ys))
+        )
+        p = p_data*p_empty
 
-    return p_fit*p_data
+    return p
 
 
 def fit_map(
@@ -415,8 +475,10 @@ def fit_map(
     func,
     x: str,
     y: str,
-    row: str = 'mark_row',
+    z: None | str = None,
     col: str = 'mark_col',
+    row: str = 'mark_row',
+    tag: str = 'tag',
     fit_dict: None | dict = None,
 ):
     """Creates a hv.DynamicMap to display fits across all chambers.
@@ -436,12 +498,16 @@ def fit_map(
         Name of the x axis (e.g., standard concentration).
     y :
         Name of the y axis (e.g., fluorescence signal).
-    row :
-        Name of df column containing row information ('mark_row' from
-        magnify.
+    z :
+        Optional extra dimension (e.g., time, [substrate]).
     col :
         Name of df column containing column information ('mark_col' from
-        magnify.
+        magnify).
+    row :
+        Name of df column containing row information ('mark_row' from
+        magnify).
+    tag :
+        Name of df column containing tag information ('tag' from magnify).
     fit_dict :
         Optionally add a dictionary of fit popt/pcovs. This function is
         generally very fast to compute and plot, but in some instances
@@ -451,17 +517,35 @@ def fit_map(
     -------
     dmap :
         hv.DynamicMap of fits for all chambers.
-    
     """
-    def fit(mark_col, mark_row):
-        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
+    cols = df[col].unique()
+    rows = df[row].unique()
+
+    indexers = [col, row]
+    if z is not None:
+        zs = df[z].unique()
+        indexers.append(z)
+
+    indexed_df = df.set_index(indexers).sort_index().copy()
+
+    def fit(*args):
+        # Decide if doing two or three dimensions
+        if len(args) == 2:
+            col_val, row_val = args
+        else:
+            col_val, row_val, z_val = args
+        
+        # Subset dataframe
+        sub_df = indexed_df.loc[*args].copy()
 
         xs, ys = sub_df[x].values, sub_df[y].values
+        tag_value = sub_df[tag].values[0]
+
         if fit_dict is None:
             fit_func = func
             popt, pcov, model = fit_func(xs, ys)
         else:
-            popt, pcov = fit_dict[mark_row, mark_col]
+            popt, pcov = fit_dict[*args]
             model = func
         ylim = (0, df[y].max())
 
@@ -472,16 +556,22 @@ def fit_map(
             popt,
             x,
             y,
-            mark_row,
-            mark_col,
+            col_val,
+            row_val,
+            tag_value,
         ).opts(ylim=ylim)
 
         return p
 
-    mark_col = hv.Dimension('column', values=range(32))
-    mark_row = hv.Dimension('row', values=range(56))
+    col_dim = hv.Dimension('column', values=cols)
+    row_dim = hv.Dimension('row', values=rows)
+    kdims = [col_dim, row_dim]
 
-    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
+    if z is not None:
+        z_dim = hv.Dimension(z, values=zs)
+        kdims.append(z_dim)
+
+    dmap = hv.DynamicMap(fit, kdims=kdims)
 
     return dmap
 
@@ -489,25 +579,46 @@ def fit_map(
 def sample_fit_map(
     fit_map: hv.DynamicMap,
     n: int = 100,
-    row: str = 'mark_row',
     col: str = 'mark_col',
+    row: str = 'mark_row',
+    z = None,
     point_alpha: float = 0.3,
     line_alpha: float = 0.1,
 ) -> hv.Overlay:
     """Samples a fit_map to show a sample of the data"""
     plots = []
 
-    sample = np.random.choice(
-        [f'{row}_{col}' for row in range(56) for col in range(32)],
-        size = n,
-        replace = False,
-    )
+    # Get random sample
+    kdims = fit_map.kdims
 
-    for chamber in sample:
-        row, col = chamber.split('_')
-        row, col = int(row), int(col)
+    if len(kdims) > 2:
+        z_vals = kdims[2].values
+        if z is not None:
+            if z not in kdims[2].values:
+                raise ValueError(
+                    f'z arg `{z}` not found in kdim `{kdims[2]}`.'
+                )
+            z_vals = [z]
 
-        p = fit_map[col, row]
+        combos = [
+            (col_val, row_val, z_val)
+            for col_val in kdims[0].values
+            for row_val in kdims[1].values
+            for z_val in z_vals
+        ]
+    else:
+        combos = [
+            (col_val, row_val)
+            for col_val in kdims[0].values
+            for row_val in kdims[1].values
+        ]
+
+    sample = random.sample(combos, k=n)
+
+    # Select and overlay sampled plots
+    for args in sample:
+
+        p = fit_map[*args]
 
         plots.append(p.opts({
             'Scatter': dict(
@@ -520,96 +631,57 @@ def sample_fit_map(
 
     return hv.Overlay(plots)
 
-######################
-# Standards plotting
-######################
 
-def plot_PBP(
-    P_is,
-    RFUs,
-    popt,
-    row = None,
-    col = None,
-):
-    """Plot a PBP isotherm fit given data (P_is, RFUs) and popt from
-    htmek.assays.standards.fit_PBP.
+def column_plot(
+    df,
+    value: str,
+    col: str = 'mark_col',
+    row: str = 'mark_row',
+    tag: str = 'tag',
+    blank: str | None = '',
+    wildtype: str | None = 'WT',
+    negative: str | None = None,
+    cmap = {
+        'default': '#3E94FA',
+        'blank': '#DEDEDE',
+        'negative': '#E18409',
+        'wildtype': '#8DED81'
+    },
+    ylim = None,
+) -> hv.Scatter:
+    """Makes a plot of all chambers down each column, so local background
+    effects can be visualized. Optionally colors special chambers
+    (e.g., blanks, WT, negative controls) for more context. Colors
+    determined by cmap argument given as dictionary.
     """
-    xs = np.linspace(0, np.max(P_is)*1.1, 1000)
+    # Set up default colormap (all tags as blue)
+    cmap = {k: cmap['default'] for k in df_fit[tag].unique()}
 
-    p_data = hv.Scatter(
-        (P_is, RFUs, row, col),
-        kdims = '[Pi] (µM)',
-        vdims = ['RFU', 'mark_row', 'mark_col'],
+    # Update special tags
+    for k in [blank, wildtype, negative]:
+        if k is not None:
+            cmap[k] = cmap[f'{k}']
+
+    # Plot
+    p = hv.Scatter(
+        df,
+        row,
+        [value, col, tag]
+    ).groupby(
+        col
+    ).opts(
+        ylim=ylim,
+        color=tag,
+        cmap=cmap,
+        show_legend=False,
+        frame_width=600,
+        frame_height=250,
+        size=8,
+        logy=True,
     )
 
-    if 'Failed' not in popt:
-        p_fit = hv.Curve(
-            (xs, PBP_isotherm(xs, *popt), row, col),
-            kdims = '[Pi] (µM)',
-            vdims = ['RFU', 'mark_row', 'mark_col'],
-        )
-        p = p_fit*p_data
-    else:
-        p = p_data
+    return p
 
-    return p_fit*p_data
-
-
-def PBP_map(
-    df: pd.DataFrame,
-    row: str = 'mark_row',
-    col: str = 'mark_col',
-    x: str = '[Pi] (µM)',
-    y: str = 'roi',
-    fit_dict: None | dict = None,
-):
-    """Creates a hv.DynamicMap to display PBP fits across all chambers.
-
-    Parameters
-    ----------
-    df :
-        A tidy pandas DataFrame containing PBP fluorescence data (y) across
-        multiple concentrations (x) for all chambers (mark_row, mark_col).
-    row :
-        Name of df column containing row information ('mark_row' from
-        magnify.
-    col :
-        Name of df column containing column information ('mark_col' from
-        magnify.
-    x :
-        Name of the x axis (standard concentration). Defaults to '[Pi] (µM)'.
-    y :
-        Name of the y axis (fluorescence signal). Defaults to 'roi', but
-        is plotted as RFU by viz.plot_PBP.
-    fit_dict :
-        Optionally add a dictionary of fit popt/pcovs. This function is
-        generally very fast to compute and plot, but in some instances
-        a dictionary lookup will be noticably faster.
-    
-    Returns
-    -------
-    dmap :
-        hv.DynamicMap of PBP fits for all chambers.
-    
-    """
-    def fit(mark_col, mark_row):
-        sub_df = df[(df[row]==mark_row) & (df[col]==mark_col)].copy()
-
-        P_is, RFUs = sub_df[x].values, sub_df[y].values
-        if fit_dict is None:
-            popt, pcov = fit_PBP(P_is, RFUs)
-        else:
-            popt, pcov = fit_dict[mark_row, mark_col]
-        ylim = (0, df[y].max())
-
-        return plot_PBP(P_is, RFUs, popt, mark_row, mark_col).opts(ylim=ylim)
-
-    mark_col = hv.Dimension('column', values=range(32))
-    mark_row = hv.Dimension('row', values=range(56))
-
-    dmap = hv.DynamicMap(fit, kdims=[mark_col, mark_row])
-
-    return dmap
 
 def plot_all_std_curves(standards_df):
     ax = plt.subplot()

@@ -6,6 +6,8 @@ from scipy.optimize import curve_fit
 import magnify
 import sympy as sp
 
+from numpy.typing import ArrayLike
+
 
 def standards_pipe(
     data,
@@ -15,6 +17,7 @@ def standards_pipe(
     blank='BLANK',
     post_hflip=True,
     pre_hflip=False,
+    basic_correct=False,
     pipes=None,
     return_pipe=False,
     **kwargs,
@@ -59,6 +62,8 @@ def standards_pipe(
         pipe.add_pipe("horizontal_flip", after="stitch")
     if pre_hflip:
         pipe.add_pipe("horizontal_flip", before="stitch")
+    if basic_correct:
+        pipe.add_pipe("basic_correct", before="stitch")
 
     if return_pipe:
         return pipe
@@ -71,17 +76,18 @@ def standards_pipe(
     return chip
 
 def PBP_isotherm(
-    P_i,
-    A,
-    KD,
-    PS,
-    I_0uMP_i,
-):
+    P_i: float | ArrayLike,
+    A: float,
+    KD: float,
+    PS: float,
+    I_0uMP_i: float,
+) -> float | ArrayLike:
     """Isotherm for single-site Pi:PBP binding.
+
     Parameters
     ----------
-    P_i : float
-        Free phosphate concentration.
+    P_i : float or np.array
+        Free phosphate concentration(s).
     A : float
         Amplitude of the isotherm.
     KD : float
@@ -93,26 +99,52 @@ def PBP_isotherm(
 
     Returns
     -------
-    float
-        Predicted RFU value.
+    float or np.array
+        Predicted RFU value(s) for P_i(s).
     """
     return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I_0uMP_i
 
 def fit_PBP(
-    P_is,
-    RFUs,
+    P_is: ArrayLike,
+    RFUs: ArrayLike,
 ):
-    """Curve fit PBP isotherm with intial guesses and bounds. This function
-    returns the fitting function.
+    """Curve fit PBP isotherm with intial guesses and bounds.
+
+    This function is prescribed – it uses known best-guess parameters
+    and physical bounds for fitting PBP data.
     
+    NOTE: This function returns the fitting function.
+
+    Parameters
+    ----------
+    P_is : np.array
+        Array of phosphate concentrations.
+    RFUs : np.array
+        Array of RFUs.
+
+    Returns
+    -------
+    popt : np.array
+        The optimal values for parameters A, KD, PS, I_0uMP_i.
+    pcov : np.array
+        The covariance matrix for parameter fits. To convert to standard
+        deviation, run `np.sqrt(np.diag(pcov))`.
+    PBP_isotherm : callable
+        The function used within curve fit. Returned so that it can be
+        used directly and unambiguously to plot the result of the fit
+        that used this function.
     """
-    popt, pcov = curve_fit(
-        PBP_isotherm,
-        P_is,
-        RFUs,
-        p0 = [40, 1, 50, 500],
-        bounds = ([0]*4, [np.inf]*4),
-    )
+    try:
+        popt, pcov = curve_fit(
+            PBP_isotherm,
+            P_is,
+            RFUs,
+            p0 = [40, 1, 50, 500],
+            bounds = ([0]*4, [np.inf]*4),
+        )
+    except (ValueError, RuntimeError):
+        popt = np.empty(4)*np.nan
+        pcov = np.empty((4,4))*np.nan
 
     return popt, pcov, PBP_isotherm
 
