@@ -104,8 +104,6 @@ def get_product_conc_PBP(x, standards_df, pbp_conc=None, cutoff=None):
         return np.nan, exceeds_PBP_cutoff
 
 def single_exponential(x, A, k, y0):
-    # x = x[:3]
-    # return (k*x) + A + C
     return A*(1-np.exp(-k*x))+y0
 
 def fit_single_exponential_turnover(assays_df, remove_RFUs_above_PBP_cutoff=True):
@@ -178,8 +176,7 @@ def michaelis_menten(S, vmax, KM):
     return (vmax*S)/(KM+S)
 
 def fit_michaelis_menten(assays_df, p0):
-     
-    # Copy to new df
+
     assays_df.sort_values(['mark_col', 'mark_row', 'substrate_conc'], inplace=True)
 
     # Drop rows with NaNs
@@ -206,14 +203,14 @@ def fit_michaelis_menten(assays_df, p0):
             (assays_df["mark_col"] == c)
         )
 
-        if len(substrate_concs) > 2:
+        if len(substrate_concs) > 1:
             try:
                 popt, _ = curve_fit(michaelis_menten, 
                                     substrate_concs, 
                                     initial_rates, 
                                     maxfev=100000, 
                                     p0=p0, 
-                                    bounds=([0, 0], [np.inf, 2000])
+                                    bounds=([0, 0], [np.inf, np.inf])
                                     )
                 vmax, KM = popt[0], popt[1]
             except RuntimeError:
