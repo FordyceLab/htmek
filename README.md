@@ -6,4 +6,9 @@ First, install magnify and PyQt5
 ```
 pip install magnify pyqt5
 ```
-Next, install htmek from this repository
+Next, clone and install `htmek` from this repository
+```
+git clone https://github.com/FordyceLab/htmek.git
+cd htmek
+pip install .
+```
