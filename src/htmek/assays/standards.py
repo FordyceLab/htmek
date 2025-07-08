@@ -80,7 +80,7 @@ def PBP_isotherm(
     A: float,
     KD: float,
     PS: float,
-    I_0uMP_i: float,
+    I0: float,
 ) -> float | ArrayLike:
     """Isotherm for single-site Pi:PBP binding.
 
@@ -94,7 +94,7 @@ def PBP_isotherm(
         Dissociation constant.
     PS : float
         PBP concentration.
-    I_0uMP_i : float
+    I0 : float
         RFU value at 0 uM Pi.
 
     Returns
@@ -102,7 +102,7 @@ def PBP_isotherm(
     float or np.array
         Predicted RFU value(s) for P_i(s).
     """
-    return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I_0uMP_i
+    return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I0
 
 def fit_PBP(
     P_is: ArrayLike,
@@ -139,7 +139,7 @@ def fit_PBP(
             PBP_isotherm,
             P_is,
             RFUs,
-            p0 = [40, 1, 50, 500],
+            p0 = [100, 0.1, 100, 1000],
             bounds = ([0]*4, [np.inf]*4),
         )
     except (ValueError, RuntimeError):
@@ -153,10 +153,11 @@ def PBP_isotherm_inverse(
     A,
     KD,
     PS,
-    I_0uMP_i
+    I0
 ):
-    """Inverse of single-site Pi:PBP binding isotherm
-        Parameters
+    """Inverse of single-site Pi:PBP binding isotherm.
+    
+    Parameters
     ----------
     RFU : float
         RFU value.
@@ -166,7 +167,7 @@ def PBP_isotherm_inverse(
         Dissociation constant.
     PS : float
         PBP concentration.
-    I_0uMP_i : float
+    I0 : float
         RFU value at 0 uM Pi.
 
     Returns
@@ -174,16 +175,16 @@ def PBP_isotherm_inverse(
     float
         Predicted free phosphate concentration.
     """
-    return (-A*I_0uMP_i*KD - A*I_0uMP_i*PS + A*KD*RFU + A*PS*RFU - I_0uMP_i**2 + 2.0*I_0uMP_i*RFU - RFU**2)/(A*(A*PS + I_0uMP_i - RFU))
+    return (-A*I0*KD - A*I0*PS + A*KD*RFU + A*PS*RFU - I0**2 + 2.0*I0*RFU - RFU**2)/(A*(A*PS + I0 - RFU))
 
 def compute_PBP_product(
     RFU,
     popt,
 ):
     """Compute [P_i] values from RFU from inverted PBP function."""
-    A, KD, PS, I_0uMP_i = popt
+    A, KD, PS, I0 = popt
     
-    return PBP_isotherm_inverse(RFU, A, KD, PS, I_0uMP_i)
+    return PBP_isotherm_inverse(RFU, A, KD, PS, I0)
 
 def fit_standard_curve(df, mark_row, mark_col):
     dat = df[(df['mark_col'] == mark_col) & (df['mark_row'] == mark_row)]

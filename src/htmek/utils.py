@@ -32,8 +32,8 @@ def bin2x2(
 def make_binned_tiff(
     file: str | Path,
     output: str | Path,
-    overlap: int = int(96*2),
-    rotation: int = 3,
+    overlap: int = int(102*2),
+    rotation: int = 0,
     verbose: bool = True,
 ) -> None:
     """Converts a magnify-importable file to a 2x2 binned tiff file
@@ -50,6 +50,31 @@ def make_binned_tiff(
 
     tf.imwrite(output, array)
     
+    if verbose:
+        print(f'File written to {output}.')
+
+def subtract_bg(
+    egfp: str | Path,
+    egfp_bg: str | Path,
+    overlap: int,
+    output: str | Path,
+    verbose: bool = True,
+) -> None:
+    """Substracts the egfp background image from the egfp image."""
+    egfp_image = magnify.image(
+        egfp,
+        overlap=overlap,
+    ).image.values.astype('int16')
+
+    bg_image = magnify.image(
+        egfp_bg,
+        overlap=overlap,
+    ).image.values.astype('int16')
+
+    bg_sub = egfp_image - bg_image
+    bg_sub = np.clip(bg_sub, 0, 65535).astype('uint16')
+
+    tf.imwrite(output, bg_sub)
     if verbose:
         print(f'File written to {output}.')
 
