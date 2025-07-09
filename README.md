@@ -2,8 +2,9 @@
 General utilities for `htmek` workups using [magnify](https://github.com/FordyceLab/magnify).
 
 ### Installation
-First, install pip, then pip install magnify and PyQt5
+Install pip, then pip install magnify and PyQt5
 ```
+conda install pip
 pip install magnify pyqt5
 ```
 Next, clone and install `htmek` from this repository
