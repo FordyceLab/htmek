@@ -20,6 +20,7 @@ def fit(
     z_label: None | str = None,
     col: str = 'mark_col',
     row: str = 'mark_row',
+    r2_thresh: float = 0.8,
     skip_col: None | str = None,
 ) -> dict | hv.DynamicMap:
     """Generic function to fit data to a function.
@@ -37,10 +38,20 @@ def fit(
     y_label : str
         Name of the column containing y-axis information, e.g., fluorescence
         intensity, etc.
+    z_label : None or str, default None
+        If there is an additional column containing additional grouping info,
+        e.g., substrate concentrations for progress curves.
+        TODO: let this take a list of more than one column for multiple
+        additional conditions.
     col : str, default 'mark_col'
         Name of the column for chamber column information.
     row : str, default 'mark_row'
         Name of the column for chamber row information.
+    r2_thresh : float, default 0.8
+        Minimum r2 for a fit to be considered a success.
+    skip_col : None or str, default None
+        If 'df' contains a column where chambers have been flagged to be
+        skipped (True or False), this should be the name of that column.
 
     Returns
     -------
@@ -68,6 +79,7 @@ def fit(
             xs,
             ys,
             fit_params,
+            r2_thresh=r2_thresh,
             autoskip=skip
         )
 

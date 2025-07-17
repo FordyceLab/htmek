@@ -184,10 +184,12 @@ class ChamberFit():
         xs: ArrayLike,
         ys: ArrayLike,
         fit_params,
+        r2_thresh: float = 0.8,
         autoskip: bool = False,
     ):
         self.xs = xs
         self.ys = ys
+        self.r2_thresh = r2_thresh
         self.autoskip = autoskip
 
         # _init_fit_params is a list of all initial fit params
@@ -290,9 +292,12 @@ class ChamberFit():
 
         perr = np.sqrt(np.diag(pcov))
 
-        # Calculate residuals
+        # Calculate r2
         if success:
             r2 = r2_score(fit_ys, fit_params.func(fit_xs, *popt))
+            # Check if passes
+            if r2 < self.r2_thresh:
+                success = False
         else:
             r2 = np.nan
 
