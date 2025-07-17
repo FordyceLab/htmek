@@ -452,7 +452,7 @@ def plot_fit(
         vdims = [y_label, 'col', 'row', 'tag'],
     )
 
-    if not np.isnan(np.sum(popt)):
+    if model is not None:
         p_fit = hv.Curve(
             (xs_full, model(xs_full, *popt), col, row, tag),
             kdims = x_label,
@@ -472,14 +472,13 @@ def plot_fit(
 
 def fit_map(
     df: pd.DataFrame,
-    func,
+    fit_dict: dict,
     x: str,
     y: str,
     z: None | str = None,
     col: str = 'mark_col',
     row: str = 'mark_row',
     tag: str = 'tag',
-    fit_dict: None | dict = None,
 ):
     """Creates a hv.DynamicMap to display fits across all chambers.
 
@@ -488,12 +487,8 @@ def fit_map(
     df :
         A tidy pandas DataFrame containing PBP fluorescence data (y) across
         multiple concentrations (x) for all chambers (mark_row, mark_col).
-    func :
-        Function related to the fit. If no fit_dict is passed, it should be
-        the function used to fit the data (e.g., that uses curve_fit) and
-        must return the modeling function as the third argument. If you
-        pass a fit_dict, it should be the modeling function itself (the
-        function passed to curve_fit).
+    fit_dict :
+        A dictionary of ChamberFit objects.
     x :
         Name of the x axis (e.g., standard concentration).
     y :
@@ -508,10 +503,6 @@ def fit_map(
         magnify).
     tag :
         Name of df column containing tag information ('tag' from magnify).
-    fit_dict :
-        Optionally add a dictionary of fit popt/pcovs. This function is
-        generally very fast to compute and plot, but in some instances
-        a dictionary lookup will be noticably faster.
     
     Returns
     -------
@@ -541,19 +532,19 @@ def fit_map(
         xs, ys = sub_df[x].values, sub_df[y].values
         tag_value = sub_df[tag].values[0]
 
-        if fit_dict is None:
-            fit_func = func
-            popt, pcov, model = fit_func(xs, ys)
-        else:
-            popt, pcov = fit_dict[*args]
-            model = func
         ylim = (0, df[y].max())
+
+        chamber_fit = fit_dict[*args]
+        if chamber_fit.fit_params is not None:
+            func = chamber_fit.fit_params.func
+        else:
+            func = None
 
         p = plot_fit(
             xs,
             ys,
-            model,
-            popt,
+            func,
+            chamber_fit.popt,
             x,
             y,
             col_val,

@@ -105,6 +105,29 @@ def exponential(
     """
     return A*(1-np.exp(-k*t))+y0
 
+def linear(
+    t: float | ArrayLike,
+    slope: float,
+    y0: float,
+) -> float | ArrayLike:
+    """Linear fit for progress curve.
+
+    Parameters
+    ----------
+    t : float or np.array
+        Time(s).
+    slope : float
+        Slope.
+    y0 : float
+        Intercept.
+
+    Returns
+    -------
+    float or np.array
+        Predicted value at time t.
+    """
+    return slope*t+y0
+
 def fit_RFU_progress(
     ts: ArrayLike,
     RFUs: ArrayLike,
@@ -140,7 +163,7 @@ def fit_RFU_progress(
             exponential,
             ts,
             RFUs,
-            p0 = [np.max(RFUs), 0.01, np.min(RFUs)],
+            p0 = [np.max(RFUs), 0.1, np.min(RFUs)],
             bounds = ([0, 0, 0], [np.inf, np.inf, np.inf]),
         )
     except (ValueError, RuntimeError):
@@ -148,6 +171,55 @@ def fit_RFU_progress(
         pcov = np.empty((3,3))*np.nan
 
     return popt, pcov, exponential
+
+def fit_kinetics(
+    ts: ArrayLike,
+    Ps: ArrayLike,
+):
+    """Curve fit RFU progress curve with intial guesses and bounds.
+
+    This function is prescribed – it uses known best-guess parameters
+    and physical bounds for fitting timecourse data.
+    
+    NOTE: This function returns the fitting function.
+
+    Parameters
+    ----------
+    ts : np.array
+        Array of times.
+    Ps : np.array
+        Array of RFUs.
+
+    Returns
+    -------
+    popt : np.array
+        The optimal values for fit parameters.
+    pcov : np.array
+        The covariance matrix for parameter fits. To convert to standard
+        deviation, run `np.sqrt(np.diag(pcov))`.
+    fit_func : callable
+        The function used within curve fit. Returned so that it can be
+        used directly and unambiguously to plot the result of the fit
+        that used this function.
+    """
+    try:
+        popt, pcov = curve_fit(
+            exponential,
+            ts,
+            RFUs,
+            p0 = [np.max(Ps), 0.001, np.min(Ps)],
+            bounds = ([0, 0, 0], [np.inf, np.inf, np.inf]),
+        )
+
+        fit_func = exponential
+
+    except (ValueError, RuntimeError):
+        popt = np.empty(3)*np.nan
+        pcov = np.empty((3,3))*np.nan
+
+    return popt, pcov, fit_func
+
+
 
 
 def get_product_conc_PBP(x, standards_df, pbp_conc=None, cutoff=None):

@@ -104,6 +104,29 @@ def PBP_isotherm(
     """
     return 0.5 * A * (KD + P_i + PS - ((KD + PS + P_i)**2 - 4*PS*P_i)**(1/2)) + I0
 
+def linear_PBP(
+    P_i: float | ArrayLike,
+    slope: float,
+    I0: float,
+) -> float | ArrayLike:
+    """Isotherm for single-site Pi:PBP binding.
+
+    Parameters
+    ----------
+    P_i : float or np.array
+        Free phosphate concentration(s).
+    slope : float
+        The slope.
+    I0 : float
+        RFU value at 0 uM Pi.
+
+    Returns
+    -------
+    float or np.array
+        Predicted RFU value(s) for P_i(s).
+    """
+    return slope*P_i+I0
+
 def fit_PBP(
     P_is: ArrayLike,
     RFUs: ArrayLike,

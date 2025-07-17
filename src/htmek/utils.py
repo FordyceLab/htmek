@@ -146,12 +146,29 @@ def to_df(
 
 
 def make_df_fit(
-    fit_dict,
-    params,
-    col,
-    row,
-    z=None,
+    fit_dict: dict,
+    fit_type: None | str = None,
+    col: str = 'mark_col',
+    row: str = 'mark_row',
+    z: None | str = None,
 ):
+
+    fit_types = set(v.fit_type for v in fit_dict.values())
+    if fit_type is None:
+        if len(fit_types) > 1:
+            raise NotImplementedError(f'Multiple fit_types in dictionary and no fit_type argument, pass one of {fit_types}')
+    if fit_type not in fit_types:
+        raise ValueError(f'fit_type not found in dictionary, pass one of {fit_types}')
+
+    else:
+        fit_dict = {k: v
+                    for k,v in fit_dict.items()
+                    if v.fit_type == fit_type}
+        params = list(fit_dict.values())[0].params
+        fit_dict = {k: (v.popt, v.perr)
+                    for k,v in fit_dict.items()
+                    if v.fit_type == fit_type}
+
     args = [col, row]
     if z is not None:
         args.append(z)
@@ -171,5 +188,8 @@ def make_df_fit(
     # Delete old columns
     del df_fit['popt']
     del df_fit['perr']
+
+    # Add name of fit
+    df_fit.insert(2, 'fit_type', fit_type)
 
     return df_fit
