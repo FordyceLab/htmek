@@ -1,5 +1,5 @@
 # htmek
-General utilities for `htmek` workups using [`magnify`](https://github.com/FordyceLab/magnify).
+General utilities for HT-MEK data processing with [`magnify`](https://github.com/FordyceLab/magnify).
 
 ### Installation
 Install pip, then pip install magnify and PyQt5
